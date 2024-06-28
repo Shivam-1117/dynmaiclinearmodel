@@ -118,7 +118,7 @@ def get_modelResults(model, variables, model_data, period):
 
 # Page title
 st.set_page_config(layout='wide', page_title='Dynamic Linear Modelling App', page_icon='🏗️')
-st.title('🏗️ Dynamic Linear Model')
+st.title('🏗️ Dynamic Linear Modelling App')
 sleep_time = 1
 
 with st.expander('About this app'):
@@ -130,7 +130,7 @@ with st.expander('About this app'):
 
 
 # Sidebar for accepting input parameters
-st.header('1.1. Input Raw Data')
+st.header('1. Import Raw Data')
 uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
 if uploaded_file is not None:
     retail_data = pd.read_excel(uploaded_file, index_col = False)
@@ -344,4 +344,4 @@ if uploaded_file:
     
 
 else:
-    st.warning('👈 Upload a CSV file or click *"Load example data"* to get started!')
+    st.warning('👈 Upload a Excel file to get started!')
