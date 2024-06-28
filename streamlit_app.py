@@ -205,7 +205,7 @@ if uploaded_file:
         else:
             st.write('### Please select at least 1 variable in model.')
 
-    if st.session_state.model_config_submitted:
+    if st.session_state.model_config_submitted and 'model_params' in st.session_state.keys():
             # Creating the transformed dataset
             model_params = st.session_state['model_params']
             transformed_data = pd.DataFrame()
