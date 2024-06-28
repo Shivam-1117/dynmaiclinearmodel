@@ -9,6 +9,12 @@ from pydlm import dlm, trend, dynamic
 from itertools import product, combinations
 
 
+def submitted():
+    st.session_state.submitted = True
+def reset():
+    st.session_state.submitted = False
+
+
 # Lag and Adstock Functions
 def apply_lag(media_data, lag = 0):
   return media_data.shift(lag, fill_value = 0)
@@ -150,7 +156,10 @@ if uploaded_file:
     for col, header in zip(header_cols, headers):
         col.write(f"**{header}**")
 
+    if 'model_config_submitted' not in st.session_state:
+        st.session_state.model_config_submitted = False        
     # Create the input rows
+    # if not st.session_state.model_config_submitted:
     with st.form(key='model_config'):
         for var in X.columns:
             input_cols = st.columns(9)
@@ -165,7 +174,6 @@ if uploaded_file:
             discount_factor = input_cols[8].text_input('', value=1.0000, key=f'{var}_discount_factor')
             
             user_inputs[var] = {
-                'Variable': var,
                 'In Model': in_model,
                 'Variable Type': vtype,
                 'Lag Min': lag_min,
@@ -177,21 +185,25 @@ if uploaded_file:
             }
 
         # Submit button
-        submit_button = st.form_submit_button(label='Submit')
-
+        submit_button_config = st.form_submit_button(label='Submit')
     # When the form is submitted
-    if submit_button:
+    if submit_button_config:
+        st.session_state.model_config_submitted = True
         # Convert the user inputs dictionary to a DataFrame
         with st.status("Running ...", expanded=True) as status:
             st.write("Setting up the model configuration ...")
             time.sleep(sleep_time)
-        model_params = pd.DataFrame.from_dict(user_inputs, orient='index').reset_index(drop = True)
+        model_params = pd.DataFrame.from_dict(user_inputs, orient='index').reset_index().rename(columns = {'index': 'Variable'})
         if 'In Model' in model_params['In Model'].tolist() or 'Outside Model' in model_params['In Model'].tolist():
-            
             st.write('### Collected Model Parameters')
             st.dataframe(model_params)
+            st.session_state['model_params'] = model_params
+        else:
+            st.write('### Please select at least 1 variable in model.')
 
+    if st.session_state.model_config_submitted:
             # Creating the transformed dataset
+            model_params = st.session_state['model_params']
             transformed_data = pd.DataFrame()
             outside_vars_dict = {}
             outside_vars = []
@@ -241,27 +253,29 @@ if uploaded_file:
                 else:
                     discount_factor = model_params[model_params['Variable'] == variable]['Discount Factor']
                     dynamic_comps[variable], feature_dict[variable] = create_dynamic_comp(transformed_data[variable], variable, discount_factor)
-
             # Creating the base component
             with st.form(key='base_component'):
-                discount_factor = st.text_input('Base Discount Factor', value=0.9999)
-                submit_button = st.form_submit_button(label='Run Regression')
-                st.markdown(
-                """
-                <style>
-                .css-18e3th9 {
-                    flex: 1;
-                    width: 100%;
-                    max-width: 100%;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True
-                )
-                if submit_button:
-                    base_component = trend(degree = 0, discount = round(float(discount_factor), 4), name='intercept')
-                    models_df = pd.DataFrame()
-                    id = 0
+                discount_factor = st.text_input('Base Discount Factor', value='0.9999')
+                submit_button_reg = st.form_submit_button(label='Run Regression', on_click = submitted)
+            if submit_button_reg:
+                base_component = trend(degree = 0, discount = round(float(discount_factor), 4), name='intercept')
+                models_df = pd.DataFrame()
+                id = 0
+                if len(outside_vars_ids.keys()) == 0:
+                    model_id = 'model_' + str(id)
+                    id += 1
+                    lags = []
+                    decays = []
+                    for variable in not_outside_vars:
+                        lags.append(model_params.loc[model_params['Variable'] == variable, 'Lag Min'].tolist()[0])
+                        decays.append(model_params[model_params['Variable'] == variable]['Decay Min'].tolist()[0])
+
+                    models_df = pd.DataFrame({'model_id': [model_id for i in range(len(not_outside_vars))],
+                                'outside_variables': not_outside_vars,
+                                'outside_lag': lags,
+                                'outside_decay': decays
+                                })
+                else:    
                     for r in range(1, len(outside_vars_ids.keys())+ 1):  # generate combinations of size 1, 2, and 3
                         for combination in combinations(outside_vars_ids.keys(), r):
                             product_combinations = list(product(*(outside_vars_ids[key] for key in combination)))
@@ -277,54 +291,52 @@ if uploaded_file:
 
                                 for variable in not_outside_vars:
                                     outside_vars.append(variable)
-                                    lags.append(model_params.loc[model_params['Variable'] == variable, 'Lag Min'][0])
-                                    decays.append(model_params[model_params['Variable'] == variable]['Decay Min'][0])
+                                    lags.append(model_params.loc[model_params['Variable'] == variable, 'Lag Min'].tolist()[0])
+                                    decays.append(model_params[model_params['Variable'] == variable]['Decay Min'].tolist()[0])
 
                                 new_row = pd.DataFrame({'model_id': [model_id for i in range(len(outside_vars))],
                                             'outside_variables': outside_vars,
                                             'outside_lag': lags,
                                             'outside_decay': decays
                                             })
-
-
                                 models_df = pd.concat([models_df, new_row], ignore_index = True)
                     
-                    all_models = models_df['model_id'].unique()
-                    model_stats_all = pd.DataFrame()
-                    variable_stats_all = pd.DataFrame()
+                all_models = models_df['model_id'].unique()
+                model_stats_all = pd.DataFrame()
+                variable_stats_all = pd.DataFrame()
 
-                    for i in range(len(all_models)):
-                        model_df = models_df[models_df['model_id'] == all_models[i]].reset_index(drop = True)
-                        model = dlm(y)
-                        model.add(base_component)
-                        list_of_model_vars = []
-                        for j in range(len(model_df)):
-                            variable = model_df.loc[j, 'outside_variables']
-                            lag = model_df.loc[j, 'outside_lag']
-                            decay = model_df.loc[j, 'outside_decay']
-                            variable_new = variable + '_' + str(lag) + '_' + str(decay)
+                for i in range(len(all_models)):
+                    model_df = models_df[models_df['model_id'] == all_models[i]].reset_index(drop = True)
+                    model = dlm(y)
+                    model.add(base_component)
+                    list_of_model_vars = []
+                    for j in range(len(model_df)):
+                        variable = model_df.loc[j, 'outside_variables']
+                        lag = model_df.loc[j, 'outside_lag']
+                        decay = model_df.loc[j, 'outside_decay']
+                        variable_new = variable + '_' + str(lag) + '_' + str(decay)
 
-                            if variable in list(outside_vars_dict.keys()):
-                                model.add(dynamic_comps[variable_new])
-                                list_of_model_vars.append(variable_new)
-                            else:
-                                model.add(dynamic_comps[variable])
-                                list_of_model_vars.append(variable)
-                        model.fit()
-                        coefficients, avp, contributions, model_stats, variable_stats = get_modelResults(model, list_of_model_vars,
-                                                                                                        model_data = transformed_data[list_of_model_vars],
-                                                                                                        period = retail_data['Timeframe'])
+                        if variable in list(outside_vars_dict.keys()):
+                            model.add(dynamic_comps[variable_new])
+                            list_of_model_vars.append(variable_new)
+                        else:
+                            model.add(dynamic_comps[variable])
+                            list_of_model_vars.append(variable)
+                    model.fit()
+                    coefficients, avp, contributions, model_stats, variable_stats = get_modelResults(model, list_of_model_vars,
+                                                                                                    model_data = transformed_data[list_of_model_vars],
+                                                                                                    period = retail_data['Timeframe'])
 
-                        model_stats.insert(loc=0, column='model_id', value=all_models[i])
-                        variable_stats.insert(loc=0, column='model_id', value=all_models[i])
+                    model_stats.insert(loc=0, column='model_id', value=all_models[i])
+                    variable_stats.insert(loc=0, column='model_id', value=all_models[i])
 
-                        model_stats_all = pd.concat([model_stats_all, model_stats], ignore_index = True)
-                        variable_stats_all = pd.concat([variable_stats_all, variable_stats], ignore_index = True)
-                    st.write('### Model Results with all the ouside variables, if any')
-                    st.dataframe(model_stats_all)
-                    st.write('### Variable Stats with all the ouside variables, if any')
-                    st.dataframe(variable_stats_all)
-        else:
-            st.write('### Please select at least 1 variable in model.')
+                    model_stats_all = pd.concat([model_stats_all, model_stats], ignore_index = True)
+                    variable_stats_all = pd.concat([variable_stats_all, variable_stats], ignore_index = True)
+                st.write('### Model Results with all the outside variables, if any')
+                st.dataframe(model_stats_all)
+                st.write('### Variable Stats with all the outside variables, if any')
+                st.dataframe(variable_stats_all)
+    
+
 else:
     st.warning('👈 Upload a CSV file or click *"Load example data"* to get started!')
