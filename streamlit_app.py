@@ -60,8 +60,12 @@ def get_modelResults(model, variables, model_data, period):
 
   r2 = round(r2_score(avp['Actual'], avp['Predicted']), 2)
   mape = np.mean(np.abs((avp['Actual'] - avp['Predicted']) / avp['Actual'])) * 100
-  vif = pd.DataFrame({'Variable': model_data.columns,
-                      'VIF': [round(variance_inflation_factor(model_data.values, i), 2) for i in range(model_data.shape[1])]})
+  if model_data.shape[1] == 1:
+    vif = pd.DataFrame({'Variable': model_data.columns,
+                        'VIF': [np.nan]})
+  else:
+    vif = pd.DataFrame({'Variable': model_data.columns,
+                        'VIF': [round(variance_inflation_factor(model_data.values, i), 2) for i in range(model_data.shape[1])]})
   vif['Variable'] = vif['Variable'].str.split('_').str[0]
 
   model_stats = pd.DataFrame({'R2': [r2],
@@ -181,7 +185,7 @@ if uploaded_file:
                 'Decay Steps': int(decay_steps),
                 'Decay Min': round(float(decay_min), 2),
                 'Decay Max': round(float(decay_max), 2),
-                'Discount Factor': round(float(discount_factor), 2)
+                'Discount Factor': min(round(float(discount_factor), 4), 0.9999)
             }
 
         # Submit button
@@ -226,7 +230,7 @@ if uploaded_file:
                     if step == 0:
                         decays = [model_params.loc[i, 'Decay Min']]
                     else:
-                        decays = np.arange(model_params.loc[i, 'Decay Min'], model_params.loc[i, 'Decay Max'] + step, step)
+                        decays = np.arange(model_params.loc[i, 'Decay Min'], model_params.loc[i, 'Decay Max'], step)
                     discount_factor = model_params.loc[i, 'Discount Factor']
                     id = 0
                     for lag in lags:
@@ -253,12 +257,13 @@ if uploaded_file:
                 else:
                     discount_factor = model_params[model_params['Variable'] == variable]['Discount Factor']
                     dynamic_comps[variable], feature_dict[variable] = create_dynamic_comp(transformed_data[variable], variable, discount_factor)
+            
             # Creating the base component
             with st.form(key='base_component'):
                 discount_factor = st.text_input('Base Discount Factor', value='0.9999')
                 submit_button_reg = st.form_submit_button(label='Run Regression', on_click = submitted)
             if submit_button_reg:
-                base_component = trend(degree = 0, discount = round(float(discount_factor), 4), name='intercept')
+                base_component = trend(degree = 0, discount = min(round(float(discount_factor), 4), 0.9999), name='intercept')
                 models_df = pd.DataFrame()
                 id = 0
                 if len(outside_vars_ids.keys()) == 0:
