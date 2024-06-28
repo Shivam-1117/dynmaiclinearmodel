@@ -3,7 +3,10 @@ import pandas as pd
 import numpy as np
 import time
 from sklearn.metrics import mean_squared_error, r2_score
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+from scipy import stats
 from pydlm import dlm, trend, dynamic
+from itertools import product, combinations
 
 
 # Lag and Adstock Functions
@@ -27,6 +30,79 @@ def create_dynamic_comp(feature_data, feature_name, discount_factor = 1):
                          discount = discount_factor
                          )
   return dynamic_comp, features
+
+def get_modelResults(model, variables, model_data, period):
+
+  coefficients = pd.DataFrame()
+  avp = pd.DataFrame()
+  contributions = pd.DataFrame()
+
+  coefficients['Period'] = period
+  avp['Period'] = period
+  contributions['Period'] = period
+
+  avp['Actual'] = y
+
+  coefficients['Base'] = np.array(model.getLatentState(filterType='forwardFilter', name = 'intercept')).flatten()
+  contributions['Base'] = coefficients['Base']
+
+  for variable in variables:
+    coefficients[variable] = np.array(model.getLatentState(filterType='forwardFilter', name = variable)).flatten()
+    contributions[variable] = coefficients[variable] * model_data[variable]
+
+  avp['Predicted'] = contributions.iloc[:, 1:].sum(axis = 1)
+
+  r2 = round(r2_score(avp['Actual'], avp['Predicted']), 2)
+  mape = np.mean(np.abs((avp['Actual'] - avp['Predicted']) / avp['Actual'])) * 100
+  vif = pd.DataFrame({'Variable': model_data.columns,
+                      'VIF': [round(variance_inflation_factor(model_data.values, i), 2) for i in range(model_data.shape[1])]})
+  vif['Variable'] = vif['Variable'].str.split('_').str[0]
+
+  model_stats = pd.DataFrame({'R2': [r2],
+                              'MAPE': [mape]})
+
+  residuals = avp['Actual'] - avp['Predicted']
+  n = len(residuals)
+  k = model_data.shape[1]
+  mean_residuals = np.mean(residuals)
+  standard_error_residuals = np.sqrt(np.sum((residuals - mean_residuals)**2) / (n - k - 1))
+
+  model_data_mean = model_data.mean(axis = 0)
+  standard_error_model_data = np.sqrt(np.sum((model_data - model_data_mean)**2) / (n - k - 1))
+  standard_error = pd.DataFrame(standard_error_model_data/standard_error_residuals).reset_index().rename(columns = {'index': 'Variable',
+                                                                                                0: 'SE'})
+
+  coefficients_mean = pd.DataFrame(coefficients.mean(axis = 0)).reset_index().rename(columns = {'index': 'Variable',
+                                                                                                0: 'Coeff_Mean'})
+  temp = coefficients_mean.merge(standard_error, on = 'Variable')
+  tstats = pd.DataFrame()
+  tstats['Variable'] = temp['Variable']
+  tstats['tstat'] = pd.DataFrame(temp['Coeff_Mean']/temp['SE'])
+  tstats['Variable'] = tstats['Variable'].str.split('_').str[0]
+
+  degrees_of_freedom = n - k
+  p_values = []
+  for i in range(tstats.shape[0]):
+    tstat = tstats.loc[i, 'tstat']
+    p_values.append(2 * (1 - stats.t.cdf(np.abs(tstat), degrees_of_freedom)))
+
+  tstats['pvalue'] = p_values
+
+
+  neg_coeff_count = (coefficients.iloc[:, 1:] < 0).sum(axis = 0)
+  column_sums = contributions.iloc[:, 1:].sum(axis=0)
+  total_sum = column_sums.sum()
+  percentage_contributions = (column_sums / total_sum) * 100
+  percentage_contributions = percentage_contributions.reset_index().rename(columns={'index': 'Variable', 0: 'Contribution %'})
+  percentage_contributions['Contribution %'] = percentage_contributions['Contribution %'].apply(lambda x: round(x, 2))
+
+  variable_stats = pd.DataFrame(neg_coeff_count).reset_index().rename(columns={'index': 'Variable', 0: 'Neg Coeff Count'})
+  variable_stats = pd.merge(variable_stats, percentage_contributions, on='Variable', how='left')
+  variable_stats['Variable'] = variable_stats['Variable'].str.split('_').str[0]
+  variable_stats = pd.merge(variable_stats, tstats, on='Variable', how='left')
+  variable_stats = pd.merge(variable_stats, vif, on='Variable', how='left')
+
+  return coefficients, avp, contributions, model_stats, variable_stats
 
 
 
@@ -167,7 +243,6 @@ if uploaded_file:
                     dynamic_comps[variable], feature_dict[variable] = create_dynamic_comp(transformed_data[variable], variable, discount_factor)
 
             # Creating the base component
-            # Input for the global discount factor
             with st.form(key='base_component'):
                 discount_factor = st.text_input('Base Discount Factor', value=0.9999)
                 submit_button = st.form_submit_button(label='Run Regression')
@@ -185,17 +260,71 @@ if uploaded_file:
                 )
                 if submit_button:
                     base_component = trend(degree = 0, discount = round(float(discount_factor), 4), name='intercept')
+                    models_df = pd.DataFrame()
+                    id = 0
+                    for r in range(1, len(outside_vars_ids.keys())+ 1):  # generate combinations of size 1, 2, and 3
+                        for combination in combinations(outside_vars_ids.keys(), r):
+                            product_combinations = list(product(*(outside_vars_ids[key] for key in combination)))
+                            for item in product_combinations:
+                                model_id = 'model_' + str(id)
+                                outside_vars = [key for key in combination]
+                                id += 1
+                                lags = []
+                                decays = []
+                                for i in range(len(item)):
+                                    lags.append(outside_vars_dict[outside_vars[i]][item[i]][1])
+                                    decays.append(outside_vars_dict[outside_vars[i]][item[i]][2])
+
+                                for variable in not_outside_vars:
+                                    outside_vars.append(variable)
+                                    lags.append(model_params.loc[model_params['Variable'] == variable, 'Lag Min'][0])
+                                    decays.append(model_params[model_params['Variable'] == variable]['Decay Min'][0])
+
+                                new_row = pd.DataFrame({'model_id': [model_id for i in range(len(outside_vars))],
+                                            'outside_variables': outside_vars,
+                                            'outside_lag': lags,
+                                            'outside_decay': decays
+                                            })
+
+
+                                models_df = pd.concat([models_df, new_row], ignore_index = True)
+                    
+                    all_models = models_df['model_id'].unique()
+                    model_stats_all = pd.DataFrame()
+                    variable_stats_all = pd.DataFrame()
+
+                    for i in range(len(all_models)):
+                        model_df = models_df[models_df['model_id'] == all_models[i]].reset_index(drop = True)
+                        model = dlm(y)
+                        model.add(base_component)
+                        list_of_model_vars = []
+                        for j in range(len(model_df)):
+                            variable = model_df.loc[j, 'outside_variables']
+                            lag = model_df.loc[j, 'outside_lag']
+                            decay = model_df.loc[j, 'outside_decay']
+                            variable_new = variable + '_' + str(lag) + '_' + str(decay)
+
+                            if variable in list(outside_vars_dict.keys()):
+                                model.add(dynamic_comps[variable_new])
+                                list_of_model_vars.append(variable_new)
+                            else:
+                                model.add(dynamic_comps[variable])
+                                list_of_model_vars.append(variable)
+                        model.fit()
+                        coefficients, avp, contributions, model_stats, variable_stats = get_modelResults(model, list_of_model_vars,
+                                                                                                        model_data = transformed_data[list_of_model_vars],
+                                                                                                        period = retail_data['Timeframe'])
+
+                        model_stats.insert(loc=0, column='model_id', value=all_models[i])
+                        variable_stats.insert(loc=0, column='model_id', value=all_models[i])
+
+                        model_stats_all = pd.concat([model_stats_all, model_stats], ignore_index = True)
+                        variable_stats_all = pd.concat([variable_stats_all, variable_stats], ignore_index = True)
+                    st.write('### Model Results with all the ouside variables, if any')
+                    st.dataframe(model_stats_all)
+                    st.write('### Variable Stats with all the ouside variables, if any')
+                    st.dataframe(variable_stats_all)
         else:
             st.write('### Please select at least 1 variable in model.')
-            
-        
-    st.write("Evaluating performance metrics ...")
-    time.sleep(sleep_time)
-    
-    
-    st.write("Displaying performance metrics ...")
-    time.sleep(sleep_time)
-
-    
 else:
     st.warning('👈 Upload a CSV file or click *"Load example data"* to get started!')

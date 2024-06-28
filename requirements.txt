@@ -4,3 +4,5 @@ scikit-learn
 altair
 openpyxl
 pydlm
+stats
+statsmodels
