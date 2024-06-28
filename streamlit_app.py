@@ -83,10 +83,10 @@ if uploaded_file:
             vtype = input_cols[2].selectbox('', var_type, key=f'{var}_vtype')
             lag_min = input_cols[3].selectbox('', lag_options, key=f'{var}_lag_min')
             lag_max = input_cols[4].selectbox('', lag_options, key=f'{var}_lag_max')
-            decay_steps = input_cols[5].number_input('', value=1, key=f'{var}_decay_steps', step=1)
-            decay_min = input_cols[6].number_input('', value=1.0, key=f'{var}_decay_min', step=0.01, format="%.2f")
-            decay_max = input_cols[7].number_input('', value=1.0, key=f'{var}_decay_max', step=0.01, format="%.2f")
-            discount_factor = input_cols[8].number_input('', value=1.0, key=f'{var}_discount_factor', step=0.0001, format="%.4f")
+            decay_steps = input_cols[5].text_input('', value=1, key=f'{var}_decay_steps')
+            decay_min = input_cols[6].text_input('', value=1.00, key=f'{var}_decay_min')
+            decay_max = input_cols[7].text_input('', value=1.00, key=f'{var}_decay_max')
+            discount_factor = input_cols[8].text_input('', value=1.0000, key=f'{var}_discount_factor')
             
             user_inputs[var] = {
                 'Variable': var,
@@ -94,10 +94,10 @@ if uploaded_file:
                 'Variable Type': vtype,
                 'Lag Min': lag_min,
                 'Lag Max': lag_max,
-                'Decay Steps': decay_steps,
-                'Decay Min': decay_min,
-                'Decay Max': decay_max,
-                'Discount Factor': discount_factor
+                'Decay Steps': int(decay_steps),
+                'Decay Min': round(float(decay_min), 2),
+                'Decay Max': round(float(decay_max), 2),
+                'Discount Factor': round(float(discount_factor), 2)
             }
 
         # Submit button
@@ -135,7 +135,10 @@ if uploaded_file:
                     outside_vars.append(variable)
                     lags = range(model_params.loc[i, 'Lag Min'], model_params.loc[i, 'Lag Max'] + 1)
                     step = (model_params.loc[i, 'Decay Max'] - model_params.loc[i, 'Decay Min'])/model_params.loc[i, 'Decay Steps']
-                    decays = np.arange(model_params.loc[i, 'Decay Min'], model_params.loc[i, 'Decay Max'] + step, step)
+                    if step == 0:
+                        decays = [model_params.loc[i, 'Decay Min']]
+                    else:
+                        decays = np.arange(model_params.loc[i, 'Decay Min'], model_params.loc[i, 'Decay Max'] + step, step)
                     discount_factor = model_params.loc[i, 'Discount Factor']
                     id = 0
                     for lag in lags:
@@ -166,7 +169,7 @@ if uploaded_file:
             # Creating the base component
             # Input for the global discount factor
             with st.form(key='base_component'):
-                discount_factor = st.number_input('Base Discount Factor', value=0.9999, step=0.0001, format="%.4f")
+                discount_factor = st.text_input('Base Discount Factor', value=0.9999)
                 submit_button = st.form_submit_button(label='Run Regression')
                 st.markdown(
                 """
@@ -180,11 +183,8 @@ if uploaded_file:
                 """,
                 unsafe_allow_html=True
                 )
-
-                # After form submission
                 if submit_button:
-                    # discount_factor = 0.9999 #set the base discount factor
-                    base_component = trend(degree = 0, discount = discount_factor, name='intercept')
+                    base_component = trend(degree = 0, discount = round(float(discount_factor), 4), name='intercept')
         else:
             st.write('### Please select at least 1 variable in model.')
             
