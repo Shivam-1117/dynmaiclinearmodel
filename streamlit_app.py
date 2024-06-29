@@ -2,9 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import time
+import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, r2_score
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from scipy import stats
+from scipy.optimize import minimize
 from pydlm import dlm, trend, dynamic
 from itertools import product, combinations
 
@@ -13,7 +15,6 @@ def submitted():
     st.session_state.submitted = True
 def reset():
     st.session_state.submitted = False
-
 
 # Lag and Adstock Functions
 def apply_lag(media_data, lag = 0):
@@ -113,6 +114,54 @@ def get_modelResults(model, variables, model_data, period):
   variable_stats = pd.merge(variable_stats, vif, on='Variable', how='left')
 
   return coefficients, avp, contributions, model_stats, variable_stats
+
+
+def objective_function(x, original_contrib, model_data):
+  d, g = x
+  M = max(original_contrib)
+  adbug_contrb = (M * (model_data**g)) / (d + model_data**g)
+  return np.sum((original_contrib - adbug_contrb)**2)
+
+def generate_response_curves(original_contrib, model_data):
+  x0 = np.array([1, 1])
+  min_results = minimize(objective_function, x0, args=(original_contrib, model_data), method='nelder-mead',
+                 options={'xatol': 1e-8, 'disp': True})
+  return [max(original_contrib), min_results.x[0], min_results.x[1]]
+
+def plot_response_curves(curve_params):
+  response_curve_data = pd.DataFrame()
+  M, D, G, avg_op_level, cf = curve_params['M'], curve_params['D'], curve_params['G'], curve_params['Avg Op Level'], curve_params['Coversion Factor']
+  scale = curve_params['scale']
+  cprp, price = curve_params['cprp'], curve_params['price']
+  adstock_difference = avg_op_level/scale
+  adstock_data = [0]*70
+  for i in range(len(adstock_data)):
+    if i == 0:
+      adstock_data[i] = 0
+    else:
+      adstock_data[i] = adstock_data[i-1] + adstock_difference
+
+  response_curve_data['adstock_data'] = adstock_data
+  response_curve_data['activity'] = response_curve_data['adstock_data'] * cf
+  adbug_contrib = (M * (response_curve_data['adstock_data']**G)) / (D + response_curve_data['adstock_data']**G)
+  response_curve_data['adbug_contrib'] = adbug_contrib
+  response_curve_data['spends'] = response_curve_data['activity'] * cprp
+  response_curve_data['revenue'] = response_curve_data['adbug_contrib'] * price
+  response_curve_data['roi'] = response_curve_data['revenue'] * response_curve_data['spends']
+
+  max_adbug_contrib = max(response_curve_data['adbug_contrib'])
+  response_curve_data['sat_level'] = response_curve_data['adbug_contrib'] / max_adbug_contrib
+
+  current_avg = response_curve_data[response_curve_data['activity'] >= avg_op_level].index[0]
+  current_avg_point = response_curve_data.iloc[current_avg]
+  breakthrough = response_curve_data[response_curve_data['sat_level'] >= 0.1].index[0]
+  breakthrough_point = response_curve_data.iloc[breakthrough]
+  start_sat = response_curve_data[response_curve_data['sat_level'] >= 0.9].index[0]
+  start_sat_point = response_curve_data.iloc[start_sat]
+  full_sat = response_curve_data[response_curve_data['sat_level'] >= 0.95].index[0]
+  full_sat_point = response_curve_data.iloc[full_sat]
+
+  return response_curve_data, current_avg_point, breakthrough_point, start_sat_point, full_sat_point
 
 
 
@@ -341,7 +390,58 @@ if uploaded_file:
                 st.dataframe(model_stats_all)
                 st.write('### Variable Stats with all the outside variables, if any')
                 st.dataframe(variable_stats_all)
-    
 
+                # Response Curves
+                response_curve_params = pd.DataFrame()
+                for variable in X.columns:
+                    avg_op_level = X.loc[X[variable] != 0, variable].mean()
+                    cf = sum(X[variable])/sum(transformed_data[variable])
+                    mdg = generate_response_curves(contributions[variable], transformed_data[variable])
+                    mdg.append(avg_op_level)
+                    mdg.append(cf)
+                    response_curve_params[variable] = mdg
+                response_curve_params = response_curve_params.transpose()
+                response_curve_params.columns = ['M', 'D', 'G', 'Avg Op Level', 'Coversion Factor']
+                response_curve_params = response_curve_params.reset_index().rename(columns = {'index': 'Variable'})
+
+                variable = 'Digital (Million $)'
+                curve_params = {'M': response_curve_params.loc[response_curve_params['Variable'] == variable, 'M'].tolist()[0],
+                                'D': response_curve_params.loc[response_curve_params['Variable'] == variable, 'D'].tolist()[0],
+                                'G': response_curve_params.loc[response_curve_params['Variable'] == variable, 'G'].tolist()[0],
+                                'Avg Op Level': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Avg Op Level'].tolist()[0],
+                                'Coversion Factor': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Coversion Factor'].tolist()[0],
+                                'cprp': 1,
+                                'price': 1,
+                                'scale': 10
+                                }
+
+                response_curve_data, current_avg_point, breakthrough_point, start_sat_point, full_sat_point = plot_response_curves(curve_params)
+                fig, ax = plt.subplots()
+                color = 'tab:blue'
+                ax.set_xlabel('Activity')
+                ax.set_ylabel('Adbug Contribution', color=color)
+                ax.plot(response_curve_data['activity'], response_curve_data['adbug_contrib'], color=color)
+                ax.scatter(current_avg_point['activity'], current_avg_point['adbug_contrib'], color='green', label='Current Average')
+                ax.scatter(breakthrough_point['activity'], breakthrough_point['adbug_contrib'], color='black', label='Breakthrough')
+                ax.scatter(start_sat_point['activity'], start_sat_point['adbug_contrib'], color='orange', label='Start of Saturation')
+                ax.scatter(full_sat_point['activity'], full_sat_point['adbug_contrib'], color='red', label='Full Saturation')
+                ax.tick_params(axis='y', labelcolor=color)
+                ax.legend()
+                fig.tight_layout()
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.pyplot(fig)
+                with col2:
+                    st.dataframe(response_curve_data)
+                # plt.plot(response_curve_data['activity'], response_curve_data['adbug_contrib'])
+                # plt.scatter(current_avg_point['activity'], current_avg_point['adbug_contrib'], color='green', label='Current Average')
+                # plt.scatter(breakthrough_point['activity'], breakthrough_point['adbug_contrib'], color='black', label='Breakthrough')
+                # plt.scatter(start_sat_point['activity'], start_sat_point['adbug_contrib'], color='orange', label='Start of Saturation')
+                # plt.scatter(full_sat_point['activity'], full_sat_point['adbug_contrib'], color='red', label='Full Saturation')
+                # plt.xlabel('Activity')
+                # plt.ylabel('Adbug Contribution')
+                # plt.legend()
+                # plt.show()
+                # st.pyplot(plt)
 else:
     st.warning('👈 Upload a Excel file to get started!')
