@@ -39,26 +39,19 @@ def create_dynamic_comp(feature_data, feature_name, discount_factor = 1):
   return dynamic_comp, features
 
 def get_modelResults(model, variables, model_data, period):
-
   coefficients = pd.DataFrame()
   avp = pd.DataFrame()
   contributions = pd.DataFrame()
-
   coefficients['Period'] = period
   avp['Period'] = period
   contributions['Period'] = period
-
   avp['Actual'] = y
-
   coefficients['Base'] = np.array(model.getLatentState(filterType='forwardFilter', name = 'intercept')).flatten()
   contributions['Base'] = coefficients['Base']
-
   for variable in variables:
     coefficients[variable] = np.array(model.getLatentState(filterType='forwardFilter', name = variable)).flatten()
     contributions[variable] = coefficients[variable] * model_data[variable]
-
   avp['Predicted'] = contributions.iloc[:, 1:].sum(axis = 1)
-
   r2 = round(r2_score(avp['Actual'], avp['Predicted']), 2)
   mape = np.mean(np.abs((avp['Actual'] - avp['Predicted']) / avp['Actual'])) * 100
   if model_data.shape[1] == 1:
@@ -68,10 +61,8 @@ def get_modelResults(model, variables, model_data, period):
     vif = pd.DataFrame({'Variable': model_data.columns,
                         'VIF': [round(variance_inflation_factor(model_data.values, i), 2) for i in range(model_data.shape[1])]})
   vif['Variable'] = vif['Variable'].str.split('_').str[0]
-
   model_stats = pd.DataFrame({'R2': [r2],
                               'MAPE': [mape]})
-
   residuals = avp['Actual'] - avp['Predicted']
   n = len(residuals)
   k = model_data.shape[1]
@@ -90,29 +81,23 @@ def get_modelResults(model, variables, model_data, period):
   tstats['Variable'] = temp['Variable']
   tstats['tstat'] = pd.DataFrame(temp['Coeff_Mean']/temp['SE'])
   tstats['Variable'] = tstats['Variable'].str.split('_').str[0]
-
   degrees_of_freedom = n - k
   p_values = []
   for i in range(tstats.shape[0]):
     tstat = tstats.loc[i, 'tstat']
     p_values.append(2 * (1 - stats.t.cdf(np.abs(tstat), degrees_of_freedom)))
-
   tstats['pvalue'] = p_values
-
-
   neg_coeff_count = (coefficients.iloc[:, 1:] < 0).sum(axis = 0)
   column_sums = contributions.iloc[:, 1:].sum(axis=0)
   total_sum = column_sums.sum()
   percentage_contributions = (column_sums / total_sum) * 100
   percentage_contributions = percentage_contributions.reset_index().rename(columns={'index': 'Variable', 0: 'Contribution %'})
   percentage_contributions['Contribution %'] = percentage_contributions['Contribution %'].apply(lambda x: round(x, 2))
-
   variable_stats = pd.DataFrame(neg_coeff_count).reset_index().rename(columns={'index': 'Variable', 0: 'Neg Coeff Count'})
   variable_stats = pd.merge(variable_stats, percentage_contributions, on='Variable', how='left')
   variable_stats['Variable'] = variable_stats['Variable'].str.split('_').str[0]
   variable_stats = pd.merge(variable_stats, tstats, on='Variable', how='left')
   variable_stats = pd.merge(variable_stats, vif, on='Variable', how='left')
-
   return coefficients, avp, contributions, model_stats, variable_stats
 
 
@@ -140,7 +125,6 @@ def plot_response_curves(curve_params):
       adstock_data[i] = 0
     else:
       adstock_data[i] = adstock_data[i-1] + adstock_difference
-
   response_curve_data['adstock_data'] = adstock_data
   response_curve_data['activity'] = response_curve_data['adstock_data'] * cf
   adbug_contrib = (M * (response_curve_data['adstock_data']**G)) / (D + response_curve_data['adstock_data']**G)
@@ -148,10 +132,8 @@ def plot_response_curves(curve_params):
   response_curve_data['spends'] = response_curve_data['activity'] * cprp
   response_curve_data['revenue'] = response_curve_data['adbug_contrib'] * price
   response_curve_data['roi'] = response_curve_data['revenue'] * response_curve_data['spends']
-
   max_adbug_contrib = max(response_curve_data['adbug_contrib'])
   response_curve_data['sat_level'] = response_curve_data['adbug_contrib'] / max_adbug_contrib
-
   current_avg = response_curve_data[response_curve_data['activity'] >= avg_op_level].index[0]
   current_avg_point = response_curve_data.iloc[current_avg]
   breakthrough = response_curve_data[response_curve_data['sat_level'] >= 0.1].index[0]
@@ -160,7 +142,6 @@ def plot_response_curves(curve_params):
   start_sat_point = response_curve_data.iloc[start_sat]
   full_sat = response_curve_data[response_curve_data['sat_level'] >= 0.95].index[0]
   full_sat_point = response_curve_data.iloc[full_sat]
-
   return response_curve_data, current_avg_point, breakthrough_point, start_sat_point, full_sat_point
 
 
@@ -178,13 +159,10 @@ with st.expander('About this app'):
   st.warning('To engage with the app, go to the sidebar and 1. Select a data set and 2. Adjust the model parameters by adjusting the various slider widgets. As a result, this would initiate the ML model building process, display the model results as well as allowing users to download the generated models and accompanying data.')
 
 def regression_section():
-    # Sidebar for accepting input parameters
     st.header('1. Import Raw Data')
     uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
     if uploaded_file is not None:
         retail_data = pd.read_excel(uploaded_file, index_col = False)
-
-
     # Initiate the model building process
     if uploaded_file: 
         with st.status("Running ...", expanded=True) as status:
@@ -211,7 +189,7 @@ def regression_section():
 
         if 'model_config_submitted' not in st.session_state:
             st.session_state.model_config_submitted = False        
-        # Create the input rows
+
         # if not st.session_state.model_config_submitted:
         with st.form(key='model_config'):
             for var in X.columns:
@@ -225,7 +203,6 @@ def regression_section():
                 decay_min = input_cols[6].text_input('', value=1.00, key=f'{var}_decay_min')
                 decay_max = input_cols[7].text_input('', value=1.00, key=f'{var}_decay_max')
                 discount_factor = input_cols[8].text_input('', value=1.0000, key=f'{var}_discount_factor')
-                
                 user_inputs[var] = {
                     'In Model': in_model,
                     'Variable Type': vtype,
@@ -236,7 +213,6 @@ def regression_section():
                     'Decay Max': round(float(decay_max), 2),
                     'Discount Factor': min(round(float(discount_factor), 4), 0.9999)
                 }
-
             # Submit button
             submit_button_config = st.form_submit_button(label='Submit')
         # When the form is submitted
@@ -262,7 +238,6 @@ def regression_section():
                 outside_vars = []
                 not_outside_vars = []
                 outside_vars_ids = {}
-
                 for i in range(model_params.shape[0]):
                     variable = model_params.loc[i, 'Variable']
                     if model_params.loc[i, 'In Model'] == 'In Model':
@@ -390,8 +365,6 @@ def regression_section():
                     st.dataframe(model_stats_all)
                     st.write('### Variable Stats with all the outside variables, if any')
                     st.dataframe(variable_stats_all)
-    else:
-        st.warning('👈 Upload a Excel file to get started!')
 
 def response_curves_section():
     # Response Curves
