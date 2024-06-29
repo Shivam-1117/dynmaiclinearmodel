@@ -38,14 +38,14 @@ def create_dynamic_comp(feature_data, feature_name, discount_factor = 1):
                          )
   return dynamic_comp, features
 
-def get_modelResults(model, variables, model_data, period):
+def get_modelResults(model, variables, model_data, actual, period):
   coefficients = pd.DataFrame()
   avp = pd.DataFrame()
   contributions = pd.DataFrame()
   coefficients['Period'] = period
   avp['Period'] = period
   contributions['Period'] = period
-  avp['Actual'] = y
+  avp['Actual'] = actual
   coefficients['Base'] = np.array(model.getLatentState(filterType='forwardFilter', name = 'intercept')).flatten()
   contributions['Base'] = coefficients['Base']
   for variable in variables:
@@ -133,14 +133,14 @@ def plot_response_curves(curve_params):
   response_curve_data['revenue'] = response_curve_data['adbug_contrib'] * price
   response_curve_data['roi'] = response_curve_data['revenue'] * response_curve_data['spends']
   max_adbug_contrib = max(response_curve_data['adbug_contrib'])
-  response_curve_data['sat_level'] = response_curve_data['adbug_contrib'] / max_adbug_contrib
+  response_curve_data['sat_level'] = response_curve_data['adbug_contrib'] / max_adbug_contrib*100
   current_avg = response_curve_data[response_curve_data['activity'] >= avg_op_level].index[0]
   current_avg_point = response_curve_data.iloc[current_avg]
-  breakthrough = response_curve_data[response_curve_data['sat_level'] >= 0.1].index[0]
+  breakthrough = response_curve_data[response_curve_data['sat_level'] >= 10].index[0]
   breakthrough_point = response_curve_data.iloc[breakthrough]
-  start_sat = response_curve_data[response_curve_data['sat_level'] >= 0.9].index[0]
+  start_sat = response_curve_data[response_curve_data['sat_level'] >= 90].index[0]
   start_sat_point = response_curve_data.iloc[start_sat]
-  full_sat = response_curve_data[response_curve_data['sat_level'] >= 0.95].index[0]
+  full_sat = response_curve_data[response_curve_data['sat_level'] >= 95].index[0]
   full_sat_point = response_curve_data.iloc[full_sat]
   return response_curve_data, current_avg_point, breakthrough_point, start_sat_point, full_sat_point
 
@@ -159,12 +159,13 @@ with st.expander('About this app'):
   st.warning('To engage with the app, go to the sidebar and 1. Select a data set and 2. Adjust the model parameters by adjusting the various slider widgets. As a result, this would initiate the ML model building process, display the model results as well as allowing users to download the generated models and accompanying data.')
 
 def regression_section():
+    st.session_state.regression_section = True
     st.header('1. Import Raw Data')
     uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
     if uploaded_file is not None:
         retail_data = pd.read_excel(uploaded_file, index_col = False)
     # Initiate the model building process
-    if uploaded_file: 
+    if uploaded_file:
         with st.status("Running ...", expanded=True) as status:
             st.write("Preparing data ...")
             time.sleep(sleep_time)
@@ -354,6 +355,7 @@ def regression_section():
                         model.fit()
                         coefficients, avp, contributions, model_stats, variable_stats = get_modelResults(model, list_of_model_vars,
                                                                                                         model_data = transformed_data[list_of_model_vars],
+                                                                                                        actual = y,
                                                                                                         period = retail_data['Timeframe'])
 
                         model_stats.insert(loc=0, column='model_id', value=all_models[i])
@@ -361,24 +363,70 @@ def regression_section():
 
                         model_stats_all = pd.concat([model_stats_all, model_stats], ignore_index = True)
                         variable_stats_all = pd.concat([variable_stats_all, variable_stats], ignore_index = True)
-                    st.write('### Model Results with all the outside variables, if any')
-                    st.dataframe(model_stats_all)
-                    st.write('### Variable Stats with all the outside variables, if any')
-                    st.dataframe(variable_stats_all)
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write('### Model Results')
+                        st.dataframe(model_stats_all)
+                    with col2:
+                        st.write('### Variable Stats')
+                        st.dataframe(variable_stats_all)
+
+                    st.write('### Actual Vs Predicted')
+                    fig, ax = plt.subplots()
+                    color = 'tab:blue'
+                    ax.set_xlabel('Period')
+                    ax.set_ylabel('KPI', color=color)
+                    ax.plot(avp['Period'], avp['Actual'], color='blue')
+                    ax.plot(avp['Period'], avp['Predicted'], color='orange')
+                    ax.tick_params(axis = 'y', labelcolor=color)
+                    ax.legend()
+                    fig.tight_layout()
+                    col1, col2 = st.columns(vertical_alignment="top", spec = [0.6, 0.4])
+                    
+                    with col1:
+                        st.pyplot(fig)
+                    with col2:
+                        st.dataframe(avp, height=560, width=600)
+                    
+                    col1, col2, col3 = st.columns(vertical_alignment="top", spec = [0.33, 0.33, 0.33])
+                    
+                    with col1:
+                        st.write('### Transformed Data')
+                        st.dataframe(transformed_data)
+                    with col2:
+                        st.write('### Coefficients')
+                        st.dataframe(coefficients)
+                    with col3:
+                        st.write('### Contributions')
+                        st.dataframe(contributions)
 
 def response_curves_section():
+    st.session_state.response_curves_section = True
     # Response Curves
-    st.header('1. Import Model Dump')
-    uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
+    st.header('1. Import Model Raw Data')
+    uploaded_file = st.file_uploader("Upload raw data file", type=["xlsx"])
     if uploaded_file is not None:
-        model_dump = pd.read_excel(uploaded_file, index_col = False)
+        raw_data = pd.read_excel(uploaded_file, index_col = False)
+    st.header('2. Import Transformed Data')
+    uploaded_file = st.file_uploader("Upload model data file", type=["csv"])
+    if uploaded_file is not None:
+        model_data = pd.read_csv(uploaded_file, index_col = False)
+        model_data = model_data.drop(columns = ['Unnamed: 0'])
+    st.header('3. Import Model Contributions')
+    uploaded_file = st.file_uploader("Upload contributions file", type=["csv"])
+    if uploaded_file is not None:
+        contributions = pd.read_csv(uploaded_file, index_col = False)
+        contributions = contributions.drop(columns = ['Unnamed: 0'])
     # Initiate the model building process
     if uploaded_file:
+        with st.status("Running ...", expanded=True) as status:
+            st.write("Uploading data ...")
+            time.sleep(sleep_time)
         response_curve_params = pd.DataFrame()
-        for variable in X.columns:
-            avg_op_level = X.loc[X[variable] != 0, variable].mean()
-            cf = sum(X[variable])/sum(transformed_data[variable])
-            mdg = generate_response_curves(contributions[variable], transformed_data[variable])
+        for variable in model_data.columns:
+            avg_op_level = raw_data.loc[raw_data[variable] != 0, variable].mean()
+            cf = sum(raw_data[variable])/sum(model_data[variable])
+            mdg = generate_response_curves(contributions[variable], model_data[variable])
             mdg.append(avg_op_level)
             mdg.append(cf)
             response_curve_params[variable] = mdg
@@ -386,41 +434,103 @@ def response_curves_section():
         response_curve_params.columns = ['M', 'D', 'G', 'Avg Op Level', 'Coversion Factor']
         response_curve_params = response_curve_params.reset_index().rename(columns = {'index': 'Variable'})
 
-        variable = 'Digital (Million $)'
-        curve_params = {'M': response_curve_params.loc[response_curve_params['Variable'] == variable, 'M'].tolist()[0],
-                        'D': response_curve_params.loc[response_curve_params['Variable'] == variable, 'D'].tolist()[0],
-                        'G': response_curve_params.loc[response_curve_params['Variable'] == variable, 'G'].tolist()[0],
-                        'Avg Op Level': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Avg Op Level'].tolist()[0],
-                        'Coversion Factor': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Coversion Factor'].tolist()[0],
-                        'cprp': 1,
-                        'price': 1,
-                        'scale': 10
-                        }
+        variable = st.selectbox('Select the variable name:', response_curve_params['Variable'].tolist())
 
-        response_curve_data, current_avg_point, breakthrough_point, start_sat_point, full_sat_point = plot_response_curves(curve_params)
-        fig, ax = plt.subplots()
-        color = 'tab:blue'
-        ax.set_xlabel('Activity')
-        ax.set_ylabel('Adbug Contribution', color=color)
-        ax.plot(response_curve_data['activity'], response_curve_data['adbug_contrib'], color=color)
-        ax.scatter(current_avg_point['activity'], current_avg_point['adbug_contrib'], color='green', label='Current Average')
-        ax.scatter(breakthrough_point['activity'], breakthrough_point['adbug_contrib'], color='black', label='Breakthrough')
-        ax.scatter(start_sat_point['activity'], start_sat_point['adbug_contrib'], color='orange', label='Start of Saturation')
-        ax.scatter(full_sat_point['activity'], full_sat_point['adbug_contrib'], color='red', label='Full Saturation')
-        ax.tick_params(axis='y', labelcolor=color)
-        ax.legend()
-        fig.tight_layout()
-        col1, col2 = st.columns(2)
-        with col1:
-            st.pyplot(fig)
-        with col2:
-            st.dataframe(response_curve_data)
+        if variable:
+            M = response_curve_params.loc[response_curve_params['Variable'] == variable, 'M'].tolist()[0]
+            D = response_curve_params.loc[response_curve_params['Variable'] == variable, 'D'].tolist()[0]
+            G = response_curve_params.loc[response_curve_params['Variable'] == variable, 'G'].tolist()[0]
+             # Arrange the dropdown and input fields in a single row
+            col1, col2, col3= st.columns([1, 1, 1])
+            with col1:
+                st.write('M')
+                st.write(M)
+            with col2:
+                st.write('D')
+                st.write(D)
+            with col3:
+                st.write('G')
+                st.write(G)
+             # Arrange the dropdown and input fields in a single row
+            col1, col2, col3= st.columns([1, 1, 1])
+            with col1:
+                cprp = st.text_input('Enter CPRP:', value=1.0)
+            with col2:
+                price = st.text_input('Enter Price:', value=1.0)
+            with col3:
+                scale = st.text_input('Enter Scale:', value=10)
+
+            if st.button('Generate Response Curve'):
+                curve_params = {
+                'M': M,
+                'D': D,
+                'G': G,
+                'Avg Op Level': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Avg Op Level'].tolist()[0],
+                'Coversion Factor': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Coversion Factor'].tolist()[0],
+                'cprp': 1,
+                'price': 1,
+                'scale': 10
+                }
+                curve_params = {'M': response_curve_params.loc[response_curve_params['Variable'] == variable, 'M'].tolist()[0],
+                                'D': response_curve_params.loc[response_curve_params['Variable'] == variable, 'D'].tolist()[0],
+                                'G': response_curve_params.loc[response_curve_params['Variable'] == variable, 'G'].tolist()[0],
+                                'Avg Op Level': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Avg Op Level'].tolist()[0],
+                                'Coversion Factor': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Coversion Factor'].tolist()[0],
+                                'cprp': float(cprp),
+                                'price': float(price),
+                                'scale': float(scale)
+                                }
+
+                response_curve_data, current_avg_point, breakthrough_point, start_sat_point, full_sat_point = plot_response_curves(curve_params)
+                fig, ax = plt.subplots()
+                color = 'tab:blue'
+                ax.set_xlabel('Activity')
+                ax.set_ylabel('Adbug Contribution', color=color)
+                ax.plot(response_curve_data['activity'], response_curve_data['adbug_contrib'], color=color)
+                ax.scatter(current_avg_point['activity'], current_avg_point['adbug_contrib'], color='green', label='Current Average')
+                ax.scatter(breakthrough_point['activity'], breakthrough_point['adbug_contrib'], color='black', label='Breakthrough')
+                ax.scatter(start_sat_point['activity'], start_sat_point['adbug_contrib'], color='orange', label='Start of Saturation')
+                ax.scatter(full_sat_point['activity'], full_sat_point['adbug_contrib'], color='red', label='Full Saturation')
+                ax.tick_params(axis='y', labelcolor=color)
+                ax.set_title('Response Curve for ' + variable)
+                ax.legend()
+                fig.tight_layout()
+                col1, col2 = st.columns(spec = [0.6, 0.4])
+                with col1:
+                    st.pyplot(fig)
+                with col2:
+                    st.dataframe(response_curve_data, height=560)
+
+if 'page_regression' not in st.session_state:
+            st.session_state.page_regression = False
+if 'page_response_curves' not in st.session_state:
+            st.session_state.page_response_curves = False 
+if 'regression_section' not in st.session_state:
+            st.session_state.regression_section = False
+if 'response_curves_section' not in st.session_state:
+            st.session_state.response_curves_section = False
 
 page_regression = st.sidebar.button("Regression")
 page_response_curves = st.sidebar.button("Response Curves")
-if page_regression:
+if page_regression and not st.session_state.regression_section:
+    st.session_state.page_regression = True
+    st.session_state.page_response_curves = False
+    st.session_state.response_curves_section = False
     st.title("Run Regression")
     regression_section()
-elif page_response_curves:
+    st.sidebar.empty()
+elif st.session_state.regression_section and not page_response_curves:
+    st.sidebar.empty()
+    regression_section()
+elif page_response_curves and not st.session_state.response_curves_section:
+    st.session_state.page_regression = False
+    st.session_state.regression_section = False
+    st.session_state.page_response_curves = True
     st.title("Generate Response Curves")
     response_curves_section()
+elif st.session_state.response_curves_section and not page_regression:
+    response_curves_section()
+    
+if not page_regression and not page_response_curves:
+        st.session_state.page_regression = False
+        st.session_state.page_response_curves = False
