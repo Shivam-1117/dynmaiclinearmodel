@@ -177,271 +177,277 @@ with st.expander('About this app'):
   st.markdown('**How to use the app?**')
   st.warning('To engage with the app, go to the sidebar and 1. Select a data set and 2. Adjust the model parameters by adjusting the various slider widgets. As a result, this would initiate the ML model building process, display the model results as well as allowing users to download the generated models and accompanying data.')
 
+def regression_section():
+    # Sidebar for accepting input parameters
+    st.header('1. Import Raw Data')
+    uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
+    if uploaded_file is not None:
+        retail_data = pd.read_excel(uploaded_file, index_col = False)
 
-# Sidebar for accepting input parameters
-st.header('1. Import Raw Data')
-uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
-if uploaded_file is not None:
-    retail_data = pd.read_excel(uploaded_file, index_col = False)
 
-
-# Initiate the model building process
-if uploaded_file: 
-    with st.status("Running ...", expanded=True) as status:
-        st.write("Preparing data ...")
-        time.sleep(sleep_time)
-    X = retail_data[['Digital (Million $)', 'radio (Million $)', 'TV (Thousands $)']]
-    y = retail_data['sales (Million $)']
-    st.write("### Model Raw Data")
-    st.dataframe(retail_data)
-
-    st.header('2. Model Configuration')
-    to_test_options = ['Not in Model', 'In Model', 'Outside Model']
-    var_type = ['Linear', 'Adstock']
-    lag_options = [0, 1, 2, 3, 4, 5]
-
-    # Create a dictionary to hold the user inputs
-    user_inputs = {}
-
-    # Create the header row
-    header_cols = st.columns(9)
-    headers = ['Variable', 'In Model', 'Variable Type', 'Lag Min', 'Lag Max', 'Decay Steps', 'Decay Min', 'Decay Max', 'Discount Factor']
-    for col, header in zip(header_cols, headers):
-        col.write(f"**{header}**")
-
-    if 'model_config_submitted' not in st.session_state:
-        st.session_state.model_config_submitted = False        
-    # Create the input rows
-    # if not st.session_state.model_config_submitted:
-    with st.form(key='model_config'):
-        for var in X.columns:
-            input_cols = st.columns(9)
-            input_cols[0].write(f"**{var}**")
-            in_model = input_cols[1].selectbox('', to_test_options, key=f'{var}_in_model')
-            vtype = input_cols[2].selectbox('', var_type, key=f'{var}_vtype')
-            lag_min = input_cols[3].selectbox('', lag_options, key=f'{var}_lag_min')
-            lag_max = input_cols[4].selectbox('', lag_options, key=f'{var}_lag_max')
-            decay_steps = input_cols[5].text_input('', value=1, key=f'{var}_decay_steps')
-            decay_min = input_cols[6].text_input('', value=1.00, key=f'{var}_decay_min')
-            decay_max = input_cols[7].text_input('', value=1.00, key=f'{var}_decay_max')
-            discount_factor = input_cols[8].text_input('', value=1.0000, key=f'{var}_discount_factor')
-            
-            user_inputs[var] = {
-                'In Model': in_model,
-                'Variable Type': vtype,
-                'Lag Min': lag_min,
-                'Lag Max': lag_max,
-                'Decay Steps': int(decay_steps),
-                'Decay Min': round(float(decay_min), 2),
-                'Decay Max': round(float(decay_max), 2),
-                'Discount Factor': min(round(float(discount_factor), 4), 0.9999)
-            }
-
-        # Submit button
-        submit_button_config = st.form_submit_button(label='Submit')
-    # When the form is submitted
-    if submit_button_config:
-        st.session_state.model_config_submitted = True
-        # Convert the user inputs dictionary to a DataFrame
+    # Initiate the model building process
+    if uploaded_file: 
         with st.status("Running ...", expanded=True) as status:
-            st.write("Setting up the model configuration ...")
+            st.write("Preparing data ...")
             time.sleep(sleep_time)
-        model_params = pd.DataFrame.from_dict(user_inputs, orient='index').reset_index().rename(columns = {'index': 'Variable'})
-        if 'In Model' in model_params['In Model'].tolist() or 'Outside Model' in model_params['In Model'].tolist():
-            st.write('### Collected Model Parameters')
-            st.dataframe(model_params)
-            st.session_state['model_params'] = model_params
-        else:
-            st.write('### Please select at least 1 variable in model.')
+        X = retail_data[['Digital (Million $)', 'radio (Million $)', 'TV (Thousands $)']]
+        y = retail_data['sales (Million $)']
+        st.write("### Model Raw Data")
+        st.dataframe(retail_data)
 
-    if st.session_state.model_config_submitted and 'model_params' in st.session_state.keys():
-            # Creating the transformed dataset
-            model_params = st.session_state['model_params']
-            transformed_data = pd.DataFrame()
-            outside_vars_dict = {}
-            outside_vars = []
-            not_outside_vars = []
-            outside_vars_ids = {}
+        st.header('2. Model Configuration')
+        to_test_options = ['Not in Model', 'In Model', 'Outside Model']
+        var_type = ['Linear', 'Adstock']
+        lag_options = [0, 1, 2, 3, 4, 5]
 
-            for i in range(model_params.shape[0]):
-                variable = model_params.loc[i, 'Variable']
-                if model_params.loc[i, 'In Model'] == 'In Model':
-                    not_outside_vars.append(variable)
-                    if model_params.loc[i, 'Variable Type'] == 'Adstock':
-                        transformed_data[variable] = apply_lag(X[variable], model_params.loc[i, 'Lag Min'])
-                        transformed_data[variable] = apply_adstock(transformed_data[variable], model_params.loc[i, 'Decay Min'])
-                    else:
-                        transformed_data[variable] = X[variable]
-                elif model_params.loc[i, 'In Model'] == 'Outside Model':
-                    outside_vars.append(variable)
-                    lags = range(model_params.loc[i, 'Lag Min'], model_params.loc[i, 'Lag Max'] + 1)
-                    step = (model_params.loc[i, 'Decay Max'] - model_params.loc[i, 'Decay Min'])/model_params.loc[i, 'Decay Steps']
-                    if step == 0:
-                        decays = [model_params.loc[i, 'Decay Min']]
-                    else:
-                        decays = np.arange(model_params.loc[i, 'Decay Min'], model_params.loc[i, 'Decay Max'], step)
-                    discount_factor = model_params.loc[i, 'Discount Factor']
-                    id = 0
-                    for lag in lags:
-                        for decay in decays:
-                            decay = round(decay, 2)
-                            transformed_data[variable + '_' + str(lag) + '_' + str(decay)] = apply_lag(X[variable], lag)
-                            transformed_data[variable + '_' + str(lag) + '_' + str(decay)] = apply_adstock(transformed_data[variable + '_' + str(lag) + '_' + str(decay)], decay)
-                            if variable not in outside_vars_dict.keys():
-                                outside_vars_dict[variable] = [[variable + '_' + str(lag) + '_' + str(decay), lag, decay, discount_factor]]
-                            else:
-                                outside_vars_dict[variable].append([variable + '_' + str(lag) + '_' + str(decay), lag, decay, discount_factor])
-                        outside_vars_ids[variable] = list(range(len(outside_vars_dict[variable])))
+        # Create a dictionary to hold the user inputs
+        user_inputs = {}
 
-            model_vars = not_outside_vars + list(outside_vars_dict.keys())
-            
-            # Creating Dynamic Components
-            dynamic_comps = {}
-            feature_dict = {}
-            for variable in model_vars:
-                if variable in list(outside_vars_dict.keys()):
-                    for item in outside_vars_dict[variable]:
-                        discount_factor = item[2]
-                        dynamic_comps[item[0]], feature_dict[item[0]] = create_dynamic_comp(transformed_data[item[0]], item[0], discount_factor)
-                else:
-                    discount_factor = model_params[model_params['Variable'] == variable]['Discount Factor']
-                    dynamic_comps[variable], feature_dict[variable] = create_dynamic_comp(transformed_data[variable], variable, discount_factor)
-            
-            # Creating the base component
-            with st.form(key='base_component'):
-                discount_factor = st.text_input('Base Discount Factor', value='0.9999')
-                submit_button_reg = st.form_submit_button(label='Run Regression', on_click = submitted)
-            if submit_button_reg:
-                base_component = trend(degree = 0, discount = min(round(float(discount_factor), 4), 0.9999), name='intercept')
-                models_df = pd.DataFrame()
-                id = 0
-                if len(outside_vars_ids.keys()) == 0:
-                    model_id = 'model_' + str(id)
-                    id += 1
-                    lags = []
-                    decays = []
-                    for variable in not_outside_vars:
-                        lags.append(model_params.loc[model_params['Variable'] == variable, 'Lag Min'].tolist()[0])
-                        decays.append(model_params[model_params['Variable'] == variable]['Decay Min'].tolist()[0])
+        # Create the header row
+        header_cols = st.columns(9)
+        headers = ['Variable', 'In Model', 'Variable Type', 'Lag Min', 'Lag Max', 'Decay Steps', 'Decay Min', 'Decay Max', 'Discount Factor']
+        for col, header in zip(header_cols, headers):
+            col.write(f"**{header}**")
 
-                    models_df = pd.DataFrame({'model_id': [model_id for i in range(len(not_outside_vars))],
-                                'outside_variables': not_outside_vars,
-                                'outside_lag': lags,
-                                'outside_decay': decays
-                                })
-                else:    
-                    for r in range(1, len(outside_vars_ids.keys())+ 1):  # generate combinations of size 1, 2, and 3
-                        for combination in combinations(outside_vars_ids.keys(), r):
-                            product_combinations = list(product(*(outside_vars_ids[key] for key in combination)))
-                            for item in product_combinations:
-                                model_id = 'model_' + str(id)
-                                outside_vars = [key for key in combination]
-                                id += 1
-                                lags = []
-                                decays = []
-                                for i in range(len(item)):
-                                    lags.append(outside_vars_dict[outside_vars[i]][item[i]][1])
-                                    decays.append(outside_vars_dict[outside_vars[i]][item[i]][2])
+        if 'model_config_submitted' not in st.session_state:
+            st.session_state.model_config_submitted = False        
+        # Create the input rows
+        # if not st.session_state.model_config_submitted:
+        with st.form(key='model_config'):
+            for var in X.columns:
+                input_cols = st.columns(9)
+                input_cols[0].write(f"**{var}**")
+                in_model = input_cols[1].selectbox('', to_test_options, key=f'{var}_in_model')
+                vtype = input_cols[2].selectbox('', var_type, key=f'{var}_vtype')
+                lag_min = input_cols[3].selectbox('', lag_options, key=f'{var}_lag_min')
+                lag_max = input_cols[4].selectbox('', lag_options, key=f'{var}_lag_max')
+                decay_steps = input_cols[5].text_input('', value=1, key=f'{var}_decay_steps')
+                decay_min = input_cols[6].text_input('', value=1.00, key=f'{var}_decay_min')
+                decay_max = input_cols[7].text_input('', value=1.00, key=f'{var}_decay_max')
+                discount_factor = input_cols[8].text_input('', value=1.0000, key=f'{var}_discount_factor')
+                
+                user_inputs[var] = {
+                    'In Model': in_model,
+                    'Variable Type': vtype,
+                    'Lag Min': lag_min,
+                    'Lag Max': lag_max,
+                    'Decay Steps': int(decay_steps),
+                    'Decay Min': round(float(decay_min), 2),
+                    'Decay Max': round(float(decay_max), 2),
+                    'Discount Factor': min(round(float(discount_factor), 4), 0.9999)
+                }
 
-                                for variable in not_outside_vars:
-                                    outside_vars.append(variable)
-                                    lags.append(model_params.loc[model_params['Variable'] == variable, 'Lag Min'].tolist()[0])
-                                    decays.append(model_params[model_params['Variable'] == variable]['Decay Min'].tolist()[0])
+            # Submit button
+            submit_button_config = st.form_submit_button(label='Submit')
+        # When the form is submitted
+        if submit_button_config:
+            st.session_state.model_config_submitted = True
+            # Convert the user inputs dictionary to a DataFrame
+            with st.status("Running ...", expanded=True) as status:
+                st.write("Setting up the model configuration ...")
+                time.sleep(sleep_time)
+            model_params = pd.DataFrame.from_dict(user_inputs, orient='index').reset_index().rename(columns = {'index': 'Variable'})
+            if 'In Model' in model_params['In Model'].tolist() or 'Outside Model' in model_params['In Model'].tolist():
+                st.write('### Collected Model Parameters')
+                st.dataframe(model_params)
+                st.session_state['model_params'] = model_params
+            else:
+                st.write('### Please select at least 1 variable in model.')
 
-                                new_row = pd.DataFrame({'model_id': [model_id for i in range(len(outside_vars))],
-                                            'outside_variables': outside_vars,
-                                            'outside_lag': lags,
-                                            'outside_decay': decays
-                                            })
-                                models_df = pd.concat([models_df, new_row], ignore_index = True)
-                    
-                all_models = models_df['model_id'].unique()
-                model_stats_all = pd.DataFrame()
-                variable_stats_all = pd.DataFrame()
+        if st.session_state.model_config_submitted and 'model_params' in st.session_state.keys():
+                # Creating the transformed dataset
+                model_params = st.session_state['model_params']
+                transformed_data = pd.DataFrame()
+                outside_vars_dict = {}
+                outside_vars = []
+                not_outside_vars = []
+                outside_vars_ids = {}
 
-                for i in range(len(all_models)):
-                    model_df = models_df[models_df['model_id'] == all_models[i]].reset_index(drop = True)
-                    model = dlm(y)
-                    model.add(base_component)
-                    list_of_model_vars = []
-                    for j in range(len(model_df)):
-                        variable = model_df.loc[j, 'outside_variables']
-                        lag = model_df.loc[j, 'outside_lag']
-                        decay = model_df.loc[j, 'outside_decay']
-                        variable_new = variable + '_' + str(lag) + '_' + str(decay)
-
-                        if variable in list(outside_vars_dict.keys()):
-                            model.add(dynamic_comps[variable_new])
-                            list_of_model_vars.append(variable_new)
+                for i in range(model_params.shape[0]):
+                    variable = model_params.loc[i, 'Variable']
+                    if model_params.loc[i, 'In Model'] == 'In Model':
+                        not_outside_vars.append(variable)
+                        if model_params.loc[i, 'Variable Type'] == 'Adstock':
+                            transformed_data[variable] = apply_lag(X[variable], model_params.loc[i, 'Lag Min'])
+                            transformed_data[variable] = apply_adstock(transformed_data[variable], model_params.loc[i, 'Decay Min'])
                         else:
-                            model.add(dynamic_comps[variable])
-                            list_of_model_vars.append(variable)
-                    model.fit()
-                    coefficients, avp, contributions, model_stats, variable_stats = get_modelResults(model, list_of_model_vars,
-                                                                                                    model_data = transformed_data[list_of_model_vars],
-                                                                                                    period = retail_data['Timeframe'])
+                            transformed_data[variable] = X[variable]
+                    elif model_params.loc[i, 'In Model'] == 'Outside Model':
+                        outside_vars.append(variable)
+                        lags = range(model_params.loc[i, 'Lag Min'], model_params.loc[i, 'Lag Max'] + 1)
+                        step = (model_params.loc[i, 'Decay Max'] - model_params.loc[i, 'Decay Min'])/model_params.loc[i, 'Decay Steps']
+                        if step == 0:
+                            decays = [model_params.loc[i, 'Decay Min']]
+                        else:
+                            decays = np.arange(model_params.loc[i, 'Decay Min'], model_params.loc[i, 'Decay Max'], step)
+                        discount_factor = model_params.loc[i, 'Discount Factor']
+                        id = 0
+                        for lag in lags:
+                            for decay in decays:
+                                decay = round(decay, 2)
+                                transformed_data[variable + '_' + str(lag) + '_' + str(decay)] = apply_lag(X[variable], lag)
+                                transformed_data[variable + '_' + str(lag) + '_' + str(decay)] = apply_adstock(transformed_data[variable + '_' + str(lag) + '_' + str(decay)], decay)
+                                if variable not in outside_vars_dict.keys():
+                                    outside_vars_dict[variable] = [[variable + '_' + str(lag) + '_' + str(decay), lag, decay, discount_factor]]
+                                else:
+                                    outside_vars_dict[variable].append([variable + '_' + str(lag) + '_' + str(decay), lag, decay, discount_factor])
+                            outside_vars_ids[variable] = list(range(len(outside_vars_dict[variable])))
 
-                    model_stats.insert(loc=0, column='model_id', value=all_models[i])
-                    variable_stats.insert(loc=0, column='model_id', value=all_models[i])
+                model_vars = not_outside_vars + list(outside_vars_dict.keys())
+                
+                # Creating Dynamic Components
+                dynamic_comps = {}
+                feature_dict = {}
+                for variable in model_vars:
+                    if variable in list(outside_vars_dict.keys()):
+                        for item in outside_vars_dict[variable]:
+                            discount_factor = item[2]
+                            dynamic_comps[item[0]], feature_dict[item[0]] = create_dynamic_comp(transformed_data[item[0]], item[0], discount_factor)
+                    else:
+                        discount_factor = model_params[model_params['Variable'] == variable]['Discount Factor']
+                        dynamic_comps[variable], feature_dict[variable] = create_dynamic_comp(transformed_data[variable], variable, discount_factor)
+                
+                # Creating the base component
+                with st.form(key='base_component'):
+                    discount_factor = st.text_input('Base Discount Factor', value='0.9999')
+                    submit_button_reg = st.form_submit_button(label='Run Regression', on_click = submitted)
+                if submit_button_reg:
+                    base_component = trend(degree = 0, discount = min(round(float(discount_factor), 4), 0.9999), name='intercept')
+                    models_df = pd.DataFrame()
+                    id = 0
+                    if len(outside_vars_ids.keys()) == 0:
+                        model_id = 'model_' + str(id)
+                        id += 1
+                        lags = []
+                        decays = []
+                        for variable in not_outside_vars:
+                            lags.append(model_params.loc[model_params['Variable'] == variable, 'Lag Min'].tolist()[0])
+                            decays.append(model_params[model_params['Variable'] == variable]['Decay Min'].tolist()[0])
 
-                    model_stats_all = pd.concat([model_stats_all, model_stats], ignore_index = True)
-                    variable_stats_all = pd.concat([variable_stats_all, variable_stats], ignore_index = True)
-                st.write('### Model Results with all the outside variables, if any')
-                st.dataframe(model_stats_all)
-                st.write('### Variable Stats with all the outside variables, if any')
-                st.dataframe(variable_stats_all)
+                        models_df = pd.DataFrame({'model_id': [model_id for i in range(len(not_outside_vars))],
+                                    'outside_variables': not_outside_vars,
+                                    'outside_lag': lags,
+                                    'outside_decay': decays
+                                    })
+                    else:    
+                        for r in range(1, len(outside_vars_ids.keys())+ 1):  # generate combinations of size 1, 2, and 3
+                            for combination in combinations(outside_vars_ids.keys(), r):
+                                product_combinations = list(product(*(outside_vars_ids[key] for key in combination)))
+                                for item in product_combinations:
+                                    model_id = 'model_' + str(id)
+                                    outside_vars = [key for key in combination]
+                                    id += 1
+                                    lags = []
+                                    decays = []
+                                    for i in range(len(item)):
+                                        lags.append(outside_vars_dict[outside_vars[i]][item[i]][1])
+                                        decays.append(outside_vars_dict[outside_vars[i]][item[i]][2])
 
-                # Response Curves
-                response_curve_params = pd.DataFrame()
-                for variable in X.columns:
-                    avg_op_level = X.loc[X[variable] != 0, variable].mean()
-                    cf = sum(X[variable])/sum(transformed_data[variable])
-                    mdg = generate_response_curves(contributions[variable], transformed_data[variable])
-                    mdg.append(avg_op_level)
-                    mdg.append(cf)
-                    response_curve_params[variable] = mdg
-                response_curve_params = response_curve_params.transpose()
-                response_curve_params.columns = ['M', 'D', 'G', 'Avg Op Level', 'Coversion Factor']
-                response_curve_params = response_curve_params.reset_index().rename(columns = {'index': 'Variable'})
+                                    for variable in not_outside_vars:
+                                        outside_vars.append(variable)
+                                        lags.append(model_params.loc[model_params['Variable'] == variable, 'Lag Min'].tolist()[0])
+                                        decays.append(model_params[model_params['Variable'] == variable]['Decay Min'].tolist()[0])
 
-                variable = 'Digital (Million $)'
-                curve_params = {'M': response_curve_params.loc[response_curve_params['Variable'] == variable, 'M'].tolist()[0],
-                                'D': response_curve_params.loc[response_curve_params['Variable'] == variable, 'D'].tolist()[0],
-                                'G': response_curve_params.loc[response_curve_params['Variable'] == variable, 'G'].tolist()[0],
-                                'Avg Op Level': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Avg Op Level'].tolist()[0],
-                                'Coversion Factor': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Coversion Factor'].tolist()[0],
-                                'cprp': 1,
-                                'price': 1,
-                                'scale': 10
-                                }
+                                    new_row = pd.DataFrame({'model_id': [model_id for i in range(len(outside_vars))],
+                                                'outside_variables': outside_vars,
+                                                'outside_lag': lags,
+                                                'outside_decay': decays
+                                                })
+                                    models_df = pd.concat([models_df, new_row], ignore_index = True)
+                        
+                    all_models = models_df['model_id'].unique()
+                    model_stats_all = pd.DataFrame()
+                    variable_stats_all = pd.DataFrame()
 
-                response_curve_data, current_avg_point, breakthrough_point, start_sat_point, full_sat_point = plot_response_curves(curve_params)
-                fig, ax = plt.subplots()
-                color = 'tab:blue'
-                ax.set_xlabel('Activity')
-                ax.set_ylabel('Adbug Contribution', color=color)
-                ax.plot(response_curve_data['activity'], response_curve_data['adbug_contrib'], color=color)
-                ax.scatter(current_avg_point['activity'], current_avg_point['adbug_contrib'], color='green', label='Current Average')
-                ax.scatter(breakthrough_point['activity'], breakthrough_point['adbug_contrib'], color='black', label='Breakthrough')
-                ax.scatter(start_sat_point['activity'], start_sat_point['adbug_contrib'], color='orange', label='Start of Saturation')
-                ax.scatter(full_sat_point['activity'], full_sat_point['adbug_contrib'], color='red', label='Full Saturation')
-                ax.tick_params(axis='y', labelcolor=color)
-                ax.legend()
-                fig.tight_layout()
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.pyplot(fig)
-                with col2:
-                    st.dataframe(response_curve_data)
-                # plt.plot(response_curve_data['activity'], response_curve_data['adbug_contrib'])
-                # plt.scatter(current_avg_point['activity'], current_avg_point['adbug_contrib'], color='green', label='Current Average')
-                # plt.scatter(breakthrough_point['activity'], breakthrough_point['adbug_contrib'], color='black', label='Breakthrough')
-                # plt.scatter(start_sat_point['activity'], start_sat_point['adbug_contrib'], color='orange', label='Start of Saturation')
-                # plt.scatter(full_sat_point['activity'], full_sat_point['adbug_contrib'], color='red', label='Full Saturation')
-                # plt.xlabel('Activity')
-                # plt.ylabel('Adbug Contribution')
-                # plt.legend()
-                # plt.show()
-                # st.pyplot(plt)
-else:
-    st.warning('👈 Upload a Excel file to get started!')
+                    for i in range(len(all_models)):
+                        model_df = models_df[models_df['model_id'] == all_models[i]].reset_index(drop = True)
+                        model = dlm(y)
+                        model.add(base_component)
+                        list_of_model_vars = []
+                        for j in range(len(model_df)):
+                            variable = model_df.loc[j, 'outside_variables']
+                            lag = model_df.loc[j, 'outside_lag']
+                            decay = model_df.loc[j, 'outside_decay']
+                            variable_new = variable + '_' + str(lag) + '_' + str(decay)
+
+                            if variable in list(outside_vars_dict.keys()):
+                                model.add(dynamic_comps[variable_new])
+                                list_of_model_vars.append(variable_new)
+                            else:
+                                model.add(dynamic_comps[variable])
+                                list_of_model_vars.append(variable)
+                        model.fit()
+                        coefficients, avp, contributions, model_stats, variable_stats = get_modelResults(model, list_of_model_vars,
+                                                                                                        model_data = transformed_data[list_of_model_vars],
+                                                                                                        period = retail_data['Timeframe'])
+
+                        model_stats.insert(loc=0, column='model_id', value=all_models[i])
+                        variable_stats.insert(loc=0, column='model_id', value=all_models[i])
+
+                        model_stats_all = pd.concat([model_stats_all, model_stats], ignore_index = True)
+                        variable_stats_all = pd.concat([variable_stats_all, variable_stats], ignore_index = True)
+                    st.write('### Model Results with all the outside variables, if any')
+                    st.dataframe(model_stats_all)
+                    st.write('### Variable Stats with all the outside variables, if any')
+                    st.dataframe(variable_stats_all)
+    else:
+        st.warning('👈 Upload a Excel file to get started!')
+
+def response_curves_section():
+    # Response Curves
+    st.header('1. Import Model Dump')
+    uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
+    if uploaded_file is not None:
+        model_dump = pd.read_excel(uploaded_file, index_col = False)
+    # Initiate the model building process
+    if uploaded_file:
+        response_curve_params = pd.DataFrame()
+        for variable in X.columns:
+            avg_op_level = X.loc[X[variable] != 0, variable].mean()
+            cf = sum(X[variable])/sum(transformed_data[variable])
+            mdg = generate_response_curves(contributions[variable], transformed_data[variable])
+            mdg.append(avg_op_level)
+            mdg.append(cf)
+            response_curve_params[variable] = mdg
+        response_curve_params = response_curve_params.transpose()
+        response_curve_params.columns = ['M', 'D', 'G', 'Avg Op Level', 'Coversion Factor']
+        response_curve_params = response_curve_params.reset_index().rename(columns = {'index': 'Variable'})
+
+        variable = 'Digital (Million $)'
+        curve_params = {'M': response_curve_params.loc[response_curve_params['Variable'] == variable, 'M'].tolist()[0],
+                        'D': response_curve_params.loc[response_curve_params['Variable'] == variable, 'D'].tolist()[0],
+                        'G': response_curve_params.loc[response_curve_params['Variable'] == variable, 'G'].tolist()[0],
+                        'Avg Op Level': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Avg Op Level'].tolist()[0],
+                        'Coversion Factor': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Coversion Factor'].tolist()[0],
+                        'cprp': 1,
+                        'price': 1,
+                        'scale': 10
+                        }
+
+        response_curve_data, current_avg_point, breakthrough_point, start_sat_point, full_sat_point = plot_response_curves(curve_params)
+        fig, ax = plt.subplots()
+        color = 'tab:blue'
+        ax.set_xlabel('Activity')
+        ax.set_ylabel('Adbug Contribution', color=color)
+        ax.plot(response_curve_data['activity'], response_curve_data['adbug_contrib'], color=color)
+        ax.scatter(current_avg_point['activity'], current_avg_point['adbug_contrib'], color='green', label='Current Average')
+        ax.scatter(breakthrough_point['activity'], breakthrough_point['adbug_contrib'], color='black', label='Breakthrough')
+        ax.scatter(start_sat_point['activity'], start_sat_point['adbug_contrib'], color='orange', label='Start of Saturation')
+        ax.scatter(full_sat_point['activity'], full_sat_point['adbug_contrib'], color='red', label='Full Saturation')
+        ax.tick_params(axis='y', labelcolor=color)
+        ax.legend()
+        fig.tight_layout()
+        col1, col2 = st.columns(2)
+        with col1:
+            st.pyplot(fig)
+        with col2:
+            st.dataframe(response_curve_data)
+
+page_regression = st.sidebar.button("Regression")
+page_response_curves = st.sidebar.button("Response Curves")
+if page_regression:
+    st.title("Run Regression")
+    regression_section()
+elif page_response_curves:
+    st.title("Generate Response Curves")
+    response_curves_section()
