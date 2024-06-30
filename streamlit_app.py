@@ -135,7 +135,7 @@ def plot_response_curves(curve_params):
   response_curve_data['adbug_contrib'] = adbug_contrib
   response_curve_data['spends'] = response_curve_data['activity'] * cprp
   response_curve_data['revenue'] = response_curve_data['adbug_contrib'] * price
-  response_curve_data['roi'] = response_curve_data['revenue'] * response_curve_data['spends']
+  response_curve_data['roi'] = response_curve_data['revenue'] / response_curve_data['spends']
   max_adbug_contrib = max(response_curve_data['adbug_contrib'])
   response_curve_data['sat_level'] = response_curve_data['adbug_contrib'] / max_adbug_contrib*100
   current_avg = response_curve_data[response_curve_data['activity'] >= avg_op_level].index[0]
@@ -146,6 +146,13 @@ def plot_response_curves(curve_params):
   start_sat_point = response_curve_data.iloc[start_sat]
   full_sat = response_curve_data[response_curve_data['sat_level'] >= 95].index[0]
   full_sat_point = response_curve_data.iloc[full_sat]
+
+  response_curve_data['Points'] = [np.nan]*len(response_curve_data)
+  response_curve_data.loc[response_curve_data['activity'] == current_avg_point['activity'], 'Points'] = 'Current Average'
+  response_curve_data.loc[response_curve_data['activity'] == breakthrough_point['activity'], 'Points'] = 'Breakthrough'
+  response_curve_data.loc[response_curve_data['activity'] == start_sat_point['activity'], 'Points'] = 'Start of Saturation'
+  response_curve_data.loc[response_curve_data['activity'] == full_sat_point['activity'], 'Points'] = 'Full Saturation'
+  response_curve_data = response_curve_data.drop(columns = ['sat_level'])
   return response_curve_data, current_avg_point, breakthrough_point, start_sat_point, full_sat_point
 
 def get_simulated_data(last_year, percentage_change):
