@@ -1,6 +1,7 @@
 import streamlit as st
 from io import BytesIO
 import xlsxwriter
+import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 import time
@@ -559,19 +560,64 @@ def simulator_section():
             st.write("Uploading data ...")
             time.sleep(sleep_time)
         model_params = model_params.merge(response_curve_params, on = 'Variable', how = 'left')
-        transformed_data_new = pd.DataFrame()
-        next_year_contribs = pd.DataFrame()
-        percentage = 10
+        # Create sliders for each variable
+        percentage_changes = {}
+        variable_spends = pd.DataFrame()
         for variable in raw_data.columns[2:]:
-            transformed_data_new[variable] = get_simulated_data(raw_data[variable][len(raw_data) - 12:], percentage_change = 10)
-            lag = model_params[model_params['Variable'] == variable]['Lag Min'].tolist()[0]
-            decay = model_params[model_params['Variable'] == variable]['Decay Min'].tolist()[0]
-            M = model_params[model_params['Variable'] == variable]['M'].tolist()[0]
-            D = model_params[model_params['Variable'] == variable]['D'].tolist()[0]
-            G = model_params[model_params['Variable'] == variable]['G'].tolist()[0]
-            transformed_data_new[variable] = apply_lag(transformed_data_new[variable], lag)
-            transformed_data_new[variable] = apply_adstock(transformed_data_new[variable], decay)
-            next_year_contribs[variable] = (M * (transformed_data_new[variable] ** G)) / (D + transformed_data_new[variable] ** G)
+            current_spends = raw_data[variable][len(raw_data) - 12:].sum()
+            col1, col2, col3 = st.columns(spec = [1, 1, 1])
+            with col1:
+                percentage_changes[variable] = st.slider(label = variable + ' (%' + ' Change)', min_value=-100, max_value=100, value=0, step=1)
+            with col2:
+                st.write('Current Spends')
+                st.write(round(current_spends))                
+            with col3:
+                new_spends = current_spends * (1 + percentage_changes[variable]/100)
+                st.write('Scenario Spends')
+                st.write(round(new_spends))
+            new_row = pd.DataFrame([{'Variable': variable,
+                                        'Current Spends': current_spends,
+                                        'Scenario Spends': new_spends}])
+            variable_spends = pd.concat([variable_spends, new_row], ignore_index = True)
+
+        simulate_button = st.button('Simulate')
+        if simulate_button:
+            transformed_data_new = pd.DataFrame()
+            next_year_contribs = pd.DataFrame()
+            for variable in raw_data.columns[2:]:
+                percentage_change = percentage_changes[variable]
+                transformed_data_new[variable] = get_simulated_data(raw_data[variable][len(raw_data) - 12:], percentage_change = percentage_change)
+                lag = model_params[model_params['Variable'] == variable]['Lag Min'].tolist()[0]
+                decay = model_params[model_params['Variable'] == variable]['Decay Min'].tolist()[0]
+                M = model_params[model_params['Variable'] == variable]['M'].tolist()[0]
+                D = model_params[model_params['Variable'] == variable]['D'].tolist()[0]
+                G = model_params[model_params['Variable'] == variable]['G'].tolist()[0]
+                transformed_data_new[variable] = apply_lag(transformed_data_new[variable], lag)
+                transformed_data_new[variable] = apply_adstock(transformed_data_new[variable], decay)
+                next_year_contribs[variable] = (M * (transformed_data_new[variable] ** G)) / (D + transformed_data_new[variable] ** G)
+
+            scenario_contrib = next_year_contribs.sum(axis = 0).reset_index().rename(columns = {'index': 'Variable',
+                                                                                      0: 'Scneraio Contribution'})
+            scenario_data = variable_spends.merge(scenario_contrib, on = 'Variable', how = 'left')
+            scenario_data['Scenario ROI'] = scenario_data['Scneraio Contribution']/scenario_data['Scenario Spends']
+
+            scenario_data['Current Spends'] = scenario_data['Current Spends'].apply(lambda x: round(x))
+            scenario_data['Scneraio Contribution'] = scenario_data['Scneraio Contribution'].apply(lambda x: round(x))
+            scenario_data['Scenario Spends'] = scenario_data['Scenario Spends'].apply(lambda x: round(x))
+            scenario_data['Scenario ROI'] = scenario_data['Scenario ROI'].apply(lambda x: round(x, 2))
+
+            roi = scenario_data['Scneraio Contribution'].sum()/scenario_data['Scenario Spends'].sum()
+
+            # Gauge chart for ROI
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=roi,
+                title={'text': "Overall ROI"},
+                gauge={'axis': {'range': [0, 10]}, 
+                    'bar': {'color': "darkblue"}}))
+
+            st.plotly_chart(fig)
+            st.write(scenario_data)
 
 if 'page_regression' not in st.session_state:
             st.session_state.page_regression = False
