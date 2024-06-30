@@ -1,4 +1,6 @@
 import streamlit as st
+from io import BytesIO
+import xlsxwriter
 import pandas as pd
 import numpy as np
 import time
@@ -21,6 +23,7 @@ def apply_lag(media_data, lag = 0):
   return media_data.shift(lag, fill_value = 0)
 
 def apply_adstock(media_data, decay = 0):
+  media_data = media_data.to_numpy()
   media_data_ad = []
   for i in range(len(media_data)):
     if i == 0:
@@ -144,6 +147,14 @@ def plot_response_curves(curve_params):
   full_sat_point = response_curve_data.iloc[full_sat]
   return response_curve_data, current_avg_point, breakthrough_point, start_sat_point, full_sat_point
 
+def get_simulated_data(last_year, percentage_change):
+  last_year = last_year.to_numpy()
+  total_last_year = sum(last_year)
+  weights = last_year/total_last_year
+  new_total_last_year = total_last_year*(1 + (percentage_change/100))
+  new_last_year = weights * new_total_last_year
+  return new_last_year
+
 
 
 # Page title
@@ -225,7 +236,7 @@ def regression_section():
                 time.sleep(sleep_time)
             model_params = pd.DataFrame.from_dict(user_inputs, orient='index').reset_index().rename(columns = {'index': 'Variable'})
             if 'In Model' in model_params['In Model'].tolist() or 'Outside Model' in model_params['In Model'].tolist():
-                st.write('### Collected Model Parameters')
+                st.write('### Regression Model Parameters (required for simulator)')
                 st.dataframe(model_params)
                 st.session_state['model_params'] = model_params
             else:
@@ -391,32 +402,49 @@ def regression_section():
                     col1, col2, col3 = st.columns(vertical_alignment="top", spec = [0.33, 0.33, 0.33])
                     
                     with col1:
-                        st.write('### Transformed Data')
+                        st.write('### Transformed Data (required for response curves)')
                         st.dataframe(transformed_data)
                     with col2:
                         st.write('### Coefficients')
                         st.dataframe(coefficients)
                     with col3:
-                        st.write('### Contributions')
+                        st.write('### Contributions (required for response curves)')
                         st.dataframe(contributions)
+
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        model_params.to_excel(writer, sheet_name='Model Parameters', index=False)
+                        avp.to_excel(writer, sheet_name='AVP', index=False)
+                        model_stats_all.to_excel(writer, sheet_name='Model Stats', index=False)
+                        variable_stats_all.to_excel(writer, sheet_name='Variable Stats', index=False)
+                        transformed_data.to_excel(writer, sheet_name='Transformed Data', index=False)
+                        coefficients.to_excel(writer, sheet_name='Coefficients', index=False)
+                        contributions.to_excel(writer, sheet_name='Contributions', index=False)
+                        retail_data.to_excel(writer, sheet_name='Raw Data', index=False)
+
+                    output.seek(0)
+                    st.download_button(
+                        label="Download Model Dump",
+                        data = output,
+                        file_name='Model_Dump.xlsx',
+                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    )
 
 def response_curves_section():
     st.session_state.response_curves_section = True
     # Response Curves
-    st.header('1. Import Model Raw Data')
-    uploaded_file = st.file_uploader("Upload raw data file", type=["xlsx"])
+    st.header('1. Import Model Dump')
+    uploaded_file = st.file_uploader("Upload Model Dump", type=["xlsx"])
     if uploaded_file is not None:
-        raw_data = pd.read_excel(uploaded_file, index_col = False)
-    st.header('2. Import Transformed Data')
-    uploaded_file = st.file_uploader("Upload model data file", type=["csv"])
-    if uploaded_file is not None:
-        model_data = pd.read_csv(uploaded_file, index_col = False)
-        model_data = model_data.drop(columns = ['Unnamed: 0'])
-    st.header('3. Import Model Contributions')
-    uploaded_file = st.file_uploader("Upload contributions file", type=["csv"])
-    if uploaded_file is not None:
-        contributions = pd.read_csv(uploaded_file, index_col = False)
-        contributions = contributions.drop(columns = ['Unnamed: 0'])
+        sheets_dict = pd.read_excel(uploaded_file, sheet_name=None)
+        # Display each sheet's dataframe
+        for sheet_name, df in sheets_dict.items():
+            if sheet_name == 'Raw Data':
+                raw_data = df.copy()
+            if sheet_name == 'Transformed Data':
+                model_data = df.copy()
+            if sheet_name == 'Contributions':
+                contributions = df.copy()
     # Initiate the model building process
     if uploaded_file:
         with st.status("Running ...", expanded=True) as status:
@@ -433,6 +461,9 @@ def response_curves_section():
         response_curve_params = response_curve_params.transpose()
         response_curve_params.columns = ['M', 'D', 'G', 'Avg Op Level', 'Coversion Factor']
         response_curve_params = response_curve_params.reset_index().rename(columns = {'index': 'Variable'})
+
+        st.write('### Resposne Curve Parameters (Requiredfor Simulator)')
+        st.dataframe(response_curve_params)
 
         variable = st.selectbox('Select the variable name:', response_curve_params['Variable'].tolist())
 
@@ -501,36 +532,88 @@ def response_curves_section():
                 with col2:
                     st.dataframe(response_curve_data, height=560)
 
+def simulator_section():
+    st.session_state.simulator_section = True
+    # Simulator
+    st.header('1. Import Model Raw Data')
+    uploaded_file = st.file_uploader("Upload raw data file", type=["xlsx"])
+    if uploaded_file is not None:
+        raw_data = pd.read_excel(uploaded_file, index_col = False)
+    st.header('2. Import Model Parameters Data')
+    uploaded_file = st.file_uploader("Upload model parameters file (with MDG values)", type=["csv"])
+    if uploaded_file is not None:
+        model_params = pd.read_csv(uploaded_file, index_col = False)
+    
+    if uploaded_file:
+        with st.status("Running ...", expanded=True) as status:
+            st.write("Uploading data ...")
+            time.sleep(sleep_time)
+
+        transformed_data_new = pd.DataFrame()
+        next_year_contribs = pd.DataFrame()
+
+        for variable in raw_data.columns:
+            transformed_data_new[variable] = get_simulated_data(raw_data[variable][len(raw_data) - 12:], 10)
+            lag = model_params[model_params['Variable'] == variable]['Lag Min'].tolist()[0]
+            decay = model_params[model_params['Variable'] == variable]['Decay Min'].tolist()[0]
+            M = model_params[model_params['Variable'] == variable]['M'].tolist()[0]
+            D = model_params[model_params['Variable'] == variable]['D'].tolist()[0]
+            G = model_params[model_params['Variable'] == variable]['G'].tolist()[0]
+            transformed_data_new[variable] = apply_lag(transformed_data_new[variable], lag)
+            transformed_data_new[variable] = apply_adstock(transformed_data_new[variable], decay)
+            next_year_contribs[variable] = (M * (transformed_data_new[variable] ** G)) / (D + transformed_data_new[variable] ** G)
+
 if 'page_regression' not in st.session_state:
             st.session_state.page_regression = False
 if 'page_response_curves' not in st.session_state:
             st.session_state.page_response_curves = False 
+if 'page_simulator' not in st.session_state:
+            st.session_state.page_simulator = False 
 if 'regression_section' not in st.session_state:
             st.session_state.regression_section = False
 if 'response_curves_section' not in st.session_state:
             st.session_state.response_curves_section = False
+if 'simulator_section' not in st.session_state:
+            st.session_state.simulator_section = False
 
 page_regression = st.sidebar.button("Regression")
 page_response_curves = st.sidebar.button("Response Curves")
+page_simulator = st.sidebar.button("Simulator")
+
 if page_regression and not st.session_state.regression_section:
     st.session_state.page_regression = True
     st.session_state.page_response_curves = False
     st.session_state.response_curves_section = False
+    st.session_state.page_simulator = False
+    st.session_state.simulator_section = False
     st.title("Run Regression")
     regression_section()
     st.sidebar.empty()
-elif st.session_state.regression_section and not page_response_curves:
+elif st.session_state.regression_section and not page_response_curves and not page_simulator:
     st.sidebar.empty()
     regression_section()
 elif page_response_curves and not st.session_state.response_curves_section:
     st.session_state.page_regression = False
     st.session_state.regression_section = False
     st.session_state.page_response_curves = True
+    st.session_state.page_simulator = False
+    st.session_state.simulator_section = False
     st.title("Generate Response Curves")
     response_curves_section()
-elif st.session_state.response_curves_section and not page_regression:
+elif st.session_state.response_curves_section and not page_regression and not page_simulator:
     response_curves_section()
+elif page_simulator and not st.session_state.simulator_section:
+    st.session_state.page_regression = False
+    st.session_state.regression_section = False
+    st.session_state.page_response_curves = False
+    st.session_state.response_curves_section = False
+    st.session_state.page_simulator = True
+    st.title("Simulator")
+    simulator_section()
+elif st.session_state.simulator_section and not page_regression and not page_response_curves:
+    simulator_section()
     
-if not page_regression and not page_response_curves:
+if not page_regression and not page_response_curves and not page_simulator:
         st.session_state.page_regression = False
         st.session_state.page_response_curves = False
+        st.session_state.page_simulator = False

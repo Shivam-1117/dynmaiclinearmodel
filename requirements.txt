@@ -6,3 +6,4 @@ openpyxl
 pydlm
 stats
 statsmodels
+xlsxwriter
