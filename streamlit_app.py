@@ -461,11 +461,12 @@ def response_curves_section():
         response_curve_params = response_curve_params.transpose()
         response_curve_params.columns = ['M', 'D', 'G', 'Avg Op Level', 'Coversion Factor']
         response_curve_params = response_curve_params.reset_index().rename(columns = {'index': 'Variable'})
-
         st.write('### Resposne Curve Parameters (Requiredfor Simulator)')
         st.dataframe(response_curve_params)
-
         variable = st.selectbox('Select the variable name:', response_curve_params['Variable'].tolist())
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            response_curve_params.to_excel(writer, sheet_name='RC Parameters', index=False)
 
         if variable:
             M = response_curve_params.loc[response_curve_params['Variable'] == variable, 'M'].tolist()[0]
@@ -492,19 +493,9 @@ def response_curves_section():
                 scale = st.text_input('Enter Scale:', value=10)
 
             if st.button('Generate Response Curve'):
-                curve_params = {
-                'M': M,
-                'D': D,
-                'G': G,
-                'Avg Op Level': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Avg Op Level'].tolist()[0],
-                'Coversion Factor': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Coversion Factor'].tolist()[0],
-                'cprp': 1,
-                'price': 1,
-                'scale': 10
-                }
-                curve_params = {'M': response_curve_params.loc[response_curve_params['Variable'] == variable, 'M'].tolist()[0],
-                                'D': response_curve_params.loc[response_curve_params['Variable'] == variable, 'D'].tolist()[0],
-                                'G': response_curve_params.loc[response_curve_params['Variable'] == variable, 'G'].tolist()[0],
+                curve_params = {'M': M,
+                                'D': D,
+                                'G': G,
                                 'Avg Op Level': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Avg Op Level'].tolist()[0],
                                 'Coversion Factor': response_curve_params.loc[response_curve_params['Variable'] == variable, 'Coversion Factor'].tolist()[0],
                                 'cprp': float(cprp),
@@ -532,28 +523,47 @@ def response_curves_section():
                 with col2:
                     st.dataframe(response_curve_data, height=560)
 
+                with pd.ExcelWriter(output, engine='openpyxl', if_sheet_exists='replace', mode = 'a') as writer:
+                    response_curve_data.to_excel(writer, sheet_name=variable, index=False)
+        output.seek(0)
+        st.download_button(
+            label="Download Resposne Curves Data",
+            data = output,
+            file_name='Resposne Curves Data.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
 def simulator_section():
     st.session_state.simulator_section = True
     # Simulator
-    st.header('1. Import Model Raw Data')
-    uploaded_file = st.file_uploader("Upload raw data file", type=["xlsx"])
+    st.header('1. Import Model Dump')
+    uploaded_file = st.file_uploader("Upload Model Dump", type=["xlsx"])
     if uploaded_file is not None:
-        raw_data = pd.read_excel(uploaded_file, index_col = False)
-    st.header('2. Import Model Parameters Data')
-    uploaded_file = st.file_uploader("Upload model parameters file (with MDG values)", type=["csv"])
+        sheets_dict = pd.read_excel(uploaded_file, sheet_name=None)
+        for sheet_name, df in sheets_dict.items():
+            if sheet_name == 'Raw Data':
+                raw_data = df.copy()
+            if sheet_name == 'Model Parameters':
+                model_params = df.copy()
+
+    st.header('2. Import Response Curve Data File')
+    uploaded_file = st.file_uploader("Upload Resposne Curves Data", type=["xlsx"])
     if uploaded_file is not None:
-        model_params = pd.read_csv(uploaded_file, index_col = False)
+        sheets_dict = pd.read_excel(uploaded_file, sheet_name=None)
+        for sheet_name, df in sheets_dict.items():
+            if sheet_name == 'RC Parameters':
+                response_curve_params = df.copy()
     
     if uploaded_file:
         with st.status("Running ...", expanded=True) as status:
             st.write("Uploading data ...")
             time.sleep(sleep_time)
-
+        model_params = model_params.merge(response_curve_params, on = 'Variable', how = 'left')
         transformed_data_new = pd.DataFrame()
         next_year_contribs = pd.DataFrame()
-
-        for variable in raw_data.columns:
-            transformed_data_new[variable] = get_simulated_data(raw_data[variable][len(raw_data) - 12:], 10)
+        percentage = 10
+        for variable in raw_data.columns[2:]:
+            transformed_data_new[variable] = get_simulated_data(raw_data[variable][len(raw_data) - 12:], percentage_change = 10)
             lag = model_params[model_params['Variable'] == variable]['Lag Min'].tolist()[0]
             decay = model_params[model_params['Variable'] == variable]['Decay Min'].tolist()[0]
             M = model_params[model_params['Variable'] == variable]['M'].tolist()[0]
