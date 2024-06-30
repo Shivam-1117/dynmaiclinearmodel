@@ -614,10 +614,16 @@ def simulator_section():
                 value=roi,
                 title={'text': "Overall ROI"},
                 gauge={'axis': {'range': [0, 10]}, 
-                    'bar': {'color': "darkblue"}}))
+                    'bar': {'color': "darkblue"}}
+                    ))
 
-            st.plotly_chart(fig)
-            st.write(scenario_data)
+            # st.plotly_chart(fig)
+            # st.write(scenario_data)
+            col1, col2 = st.columns(spec = [1, 1], vertical_alignment= 'center')
+            with col1:
+                st.plotly_chart(fig)
+            with col2:
+                st.write(scenario_data)
 
 if 'page_regression' not in st.session_state:
             st.session_state.page_regression = False
