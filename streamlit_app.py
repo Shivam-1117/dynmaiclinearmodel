@@ -493,7 +493,13 @@ def response_curves_section():
             with col3:
                 scale = st.text_input('Enter Scale:', value=10)
 
-            if st.button('Generate Response Curve'):
+            col1, col2 = st.columns([1, 1], gap = 'large')
+            with col1:
+                generate_curve = st.button('Generate Response Curve')
+            with col2:
+                confirm_curve = st.button(label = 'Confirm Curve')
+
+            if generate_curve:
                 curve_params = {'M': M,
                                 'D': D,
                                 'G': G,
@@ -524,8 +530,14 @@ def response_curves_section():
                 with col2:
                     st.dataframe(response_curve_data, height=560)
 
-                with pd.ExcelWriter(output, engine='openpyxl', if_sheet_exists='replace', mode = 'a') as writer:
-                    response_curve_data.to_excel(writer, sheet_name=variable, index=False)
+                state_name = variable  + '_resp_data'
+                st.session_state[state_name] = response_curve_data
+        if confirm_curve:
+            for variable in raw_data.columns[2:]:
+                state_name = variable  + '_resp_data'
+                if state_name in st.session_state.keys():
+                    with pd.ExcelWriter(output, engine='openpyxl', if_sheet_exists='replace', mode = 'a') as writer:
+                        st.session_state[state_name].to_excel(writer, sheet_name=variable, index=False)
         output.seek(0)
         st.download_button(
             label="Download Resposne Curves Data",
