@@ -56,7 +56,7 @@ def get_modelResults(model, variables, model_data, actual, period):
     coefficients[variable] = np.array(model.getLatentState(filterType='forwardFilter', name = variable)).flatten()
     contributions[variable] = coefficients[variable] * model_data[variable]
   avp['Predicted'] = contributions.iloc[:, 1:].sum(axis = 1)
-  r2 = round(r2_score(avp['Actual'], avp['Predicted']), 2)
+  r2 = round(r2_score(avp['Actual'], avp['Predicted']), 2) * 100
   mape = np.mean(np.abs((avp['Actual'] - avp['Predicted']) / avp['Actual'])) * 100
   if model_data.shape[1] == 1:
     vif = pd.DataFrame({'Variable': model_data.columns,
@@ -188,7 +188,7 @@ def regression_section():
         with st.status("Running ...", expanded=True) as status:
             st.write("Preparing data ...")
             time.sleep(sleep_time)
-        X = retail_data[['Digital (Million $)', 'radio (Million $)', 'TV (Thousands $)']]
+        X = retail_data[['GDP', 'Covid Dummy', 'Digital (Million $)', 'radio (Million $)', 'TV (Thousands $)']]
         y = retail_data['sales (Million $)']
         st.write("### Model Raw Data")
         st.dataframe(retail_data)
@@ -231,7 +231,7 @@ def regression_section():
                     'Decay Steps': int(decay_steps),
                     'Decay Min': round(float(decay_min), 2),
                     'Decay Max': round(float(decay_max), 2),
-                    'Discount Factor': min(round(float(discount_factor), 4), 0.9999)
+                    'Discount Factor': float(discount_factor)
                 }
             # Submit button
             submit_button_config = st.form_submit_button(label='Submit')
@@ -244,7 +244,7 @@ def regression_section():
                 time.sleep(sleep_time)
             model_params = pd.DataFrame.from_dict(user_inputs, orient='index').reset_index().rename(columns = {'index': 'Variable'})
             if 'In Model' in model_params['In Model'].tolist() or 'Outside Model' in model_params['In Model'].tolist():
-                st.write('### Regression Model Parameters (required for simulator)')
+                st.write('### Regression Model Parameters')
                 st.dataframe(model_params)
                 st.session_state['model_params'] = model_params
             else:
@@ -308,7 +308,7 @@ def regression_section():
                     submit_button_reg = st.form_submit_button(label='Run Regression', on_click = submitted)
                 if submit_button_reg:
                     # base_component = trend(degree = 0, discount = min(round(float(discount_factor), 4), 0.9999), name='intercept')
-                    base_component, feature_dict['base'] = create_dynamic_comp(feature_data = [1]*len(y), feature_name = 'base', discount_factor = min(round(float(discount_factor_base), 4), 0.9999))
+                    base_component, feature_dict['base'] = create_dynamic_comp(feature_data = [1]*len(y), feature_name = 'base', discount_factor = float(discount_factor_base))
                     models_df = pd.DataFrame()
                     id = 0
                     if len(outside_vars_ids.keys()) == 0:
@@ -385,7 +385,7 @@ def regression_section():
                         variable_stats_all = pd.concat([variable_stats_all, variable_stats], ignore_index = True)
                     models_df = models_df.rename(columns = {'outside_variables': 'Variable'})
                     variable_stats_all = variable_stats_all.merge(models_df, on = ['model_id', 'Variable'], how = 'left')
-                    col1, col2 = st.columns(2)
+                    col1, col2 = st.columns([0.3, 0.7])
                     with col1:
                         st.write('### Model Results')
                         st.dataframe(model_stats_all)
@@ -394,17 +394,47 @@ def regression_section():
                         st.dataframe(variable_stats_all)
 
                     st.write('### Actual Vs Predicted')
-                    fig, ax = plt.subplots(figsize = (5, 2))
-                    color = 'tab:blue'
-                    ax.set_xlabel('Period', fontsize = 6)
-                    ax.set_ylabel('Dependent Variable', fontsize = 6)
-                    ax.plot(avp['Period'], avp['Actual'], color='blue')
-                    ax.plot(avp['Period'], avp['Predicted'], color='orange')
-                    ax.tick_params(axis = 'y', labelsize=4)
-                    ax.tick_params(axis = 'x', labelsize=4)
-                    ax.legend()
-                    fig.tight_layout()
-                    st.pyplot(fig)
+                    # fig, ax = plt.subplots(figsize = (5, 2))
+                    # color = 'tab:blue'
+                    # ax.set_xlabel('Period', fontsize = 6)
+                    # ax.set_ylabel('Dependent Variable', fontsize = 6)
+                    # ax.plot(avp['Period'], avp['Actual'], color='blue')
+                    # ax.plot(avp['Period'], avp['Predicted'], color='orange')
+                    # ax.tick_params(axis = 'y', labelsize=4)
+                    # ax.tick_params(axis = 'x', labelsize=4)
+                    # ax.legend()
+                    # fig.tight_layout()
+                    # Create traces for actual and predicted data
+                    trace_actual = go.Scatter(
+                        x=avp['Period'],
+                        y=avp['Actual'],
+                        mode='lines+markers',
+                        name='Actual',
+                        line=dict(color='blue')
+                    )
+
+                    trace_predicted = go.Scatter(
+                        x=avp['Period'],
+                        y=avp['Predicted'],
+                        mode='lines+markers',
+                        name='Predicted',
+                        line=dict(color='orange')
+                    )
+
+                    # Create the layout
+                    layout = go.Layout(
+                        title='Actual Vs Predicted',
+                        xaxis=dict(title='Period', titlefont=dict(size=16), tickfont=dict(size=12)),
+                        yaxis=dict(title='Dependent Variable', titlefont=dict(size=16), tickfont=dict(size=12)),
+                        hovermode='closest'
+                        # width = 480,
+                        # height = 192
+                    )
+
+                    # Create the figure
+                    fig = go.Figure(data=[trace_actual, trace_predicted], layout=layout)
+                    st.plotly_chart(fig)
+                    # st.pyplot(fig)
 
                     # col1, col2 = st.columns(vertical_alignment="top", spec = [0.6, 0.4])
                     
@@ -455,10 +485,13 @@ def response_curves_section():
         for sheet_name, df in sheets_dict.items():
             if sheet_name == 'Raw Data':
                 raw_data = df.copy()
+                raw_data = raw_data.iloc[len(raw_data)-12:, 4:].reset_index(drop=True)
             if sheet_name == 'Transformed Data':
                 model_data = df.copy()
+                model_data = model_data.iloc[len(model_data)-12:, 2:].reset_index(drop=True)
             if sheet_name == 'Contributions':
                 contributions = df.copy()
+                contributions = contributions.iloc[len(contributions)-12:, 2:].reset_index(drop=True)
     # Initiate the model building process
     if uploaded_file:
         with st.status("Running ...", expanded=True) as status:
@@ -475,7 +508,7 @@ def response_curves_section():
         response_curve_params = response_curve_params.transpose()
         response_curve_params.columns = ['M', 'D', 'G', 'Avg Op Level', 'Coversion Factor']
         response_curve_params = response_curve_params.reset_index().rename(columns = {'index': 'Variable'})
-        st.write('### Resposne Curve Parameters (Requiredfor Simulator)')
+        st.write('### Resposne Curve Parameters')
         st.dataframe(response_curve_params)
         variable = st.selectbox('Select the variable name:', response_curve_params['Variable'].tolist())
         output = BytesIO()
@@ -546,7 +579,7 @@ def response_curves_section():
                 state_name = variable  + '_resp_data'
                 st.session_state[state_name] = response_curve_data
         if confirm_curve:
-            for variable in raw_data.columns[2:]:
+            for variable in raw_data.columns:
                 state_name = variable  + '_resp_data'
                 if state_name in st.session_state.keys():
                     with pd.ExcelWriter(output, engine='openpyxl', if_sheet_exists='replace', mode = 'a') as writer:
@@ -588,7 +621,7 @@ def simulator_section():
         # Create sliders for each variable
         percentage_changes = {}
         variable_spends = pd.DataFrame()
-        for variable in raw_data.columns[2:]:
+        for variable in raw_data.columns[4:]:
             current_spends = raw_data[variable][len(raw_data) - 12:].sum()
             col1, col2, col3 = st.columns(spec = [1, 1, 1])
             with col1:
@@ -609,7 +642,7 @@ def simulator_section():
         if simulate_button:
             transformed_data_new = pd.DataFrame()
             next_year_contribs = pd.DataFrame()
-            for variable in raw_data.columns[2:]:
+            for variable in raw_data.columns[4:]:
                 percentage_change = percentage_changes[variable]
                 transformed_data_new[variable] = get_simulated_data(raw_data[variable][len(raw_data) - 12:], percentage_change = percentage_change)
                 lag = model_params[model_params['Variable'] == variable]['Lag Min'].tolist()[0]
