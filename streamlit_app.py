@@ -167,19 +167,23 @@ def get_simulated_data(last_year, percentage_change):
 
 # Page title
 st.set_page_config(layout='wide', page_title='Dynamic Linear Modelling App', page_icon='🏗️')
-st.title('🏗️ Dynamic Linear Modelling App')
+st.title('Dynamic Linear Modelling App')
 sleep_time = 1
 
 with st.expander('About this app'):
   st.markdown('**What can this app do?**')
-  st.info('This app allow users to build a machine learning (ML) model in an end-to-end workflow. Particularly, this encompasses data upload, data pre-processing, ML model building and post-model analysis.')
+  st.info('This app allow users to build a dynamic linear model in an end-to-end workflow. Also, user can generate response cureves for the confirmed model and simulate the media spends.')
 
   st.markdown('**How to use the app?**')
-  st.warning('To engage with the app, go to the sidebar and 1. Select a data set and 2. Adjust the model parameters by adjusting the various slider widgets. As a result, this would initiate the ML model building process, display the model results as well as allowing users to download the generated models and accompanying data.')
+  st.warning('This app has three modules: 1. Regression 2. Response Curves 3. Simulator. To engage with the app, go to the sidebar and select the task you want to perform out of the three tabs.')
+  st.warning('1. Regression: Step 1: Import the Raw Data file. Step 2: Set the model configuration. In this you can give the model parameters like lag and decay. Then click on submit button. Step 3: Select the base discount factor and click on run regression. Step 5: We can download the model dump by clicking on Download Model Dump button below Actual Vs Predicted plot.')
+  st.warning('2. Response Curves: Step 1: Import the Model Dump. Step 2: Select Variable name from the dropdown. Step 3: Enter CPRP, Price and Scale. Step 4: Click on generate response curve button. Step 5: Once curve is finalised after changing scale values, click on Confirm Curve button and again select another variabel. Step 5: Once all the curves are generated and confirmed click on Download Response Curve Data.')
+  st.warning('3. Simulator: Step 1: Import the Model Dump and Response Curve Data File. Step 2: Select the percentage change in last 1 year spends of the media using slider. and Click on Simulate to get the Simulated Data.')
+
 
 def regression_section():
     st.session_state.regression_section = True
-    st.header('1. Import Raw Data')
+    st.header('Import Raw Data')
     uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
     if uploaded_file is not None:
         retail_data = pd.read_excel(uploaded_file, index_col = False)
@@ -193,7 +197,7 @@ def regression_section():
         st.write("### Model Raw Data")
         st.dataframe(retail_data)
 
-        st.header('2. Model Configuration')
+        st.header('Model Configuration')
         to_test_options = ['Not in Model', 'In Model', 'Outside Model']
         var_type = ['Linear', 'Adstock']
         lag_options = [0, 1, 2, 3, 4, 5]
@@ -477,7 +481,7 @@ def regression_section():
 def response_curves_section():
     st.session_state.response_curves_section = True
     # Response Curves
-    st.header('1. Import Model Dump')
+    st.header('Import Model Dump')
     uploaded_file = st.file_uploader("Upload Model Dump", type=["xlsx"])
     if uploaded_file is not None:
         sheets_dict = pd.read_excel(uploaded_file, sheet_name=None)
@@ -595,7 +599,7 @@ def response_curves_section():
 def simulator_section():
     st.session_state.simulator_section = True
     # Simulator
-    st.header('1. Import Model Dump')
+    st.header('Import Model Dump')
     uploaded_file = st.file_uploader("Upload Model Dump", type=["xlsx"])
     if uploaded_file is not None:
         sheets_dict = pd.read_excel(uploaded_file, sheet_name=None)
@@ -605,7 +609,7 @@ def simulator_section():
             if sheet_name == 'Model Parameters':
                 model_params = df.copy()
 
-    st.header('2. Import Response Curve Data File')
+    st.header('Import Response Curve Data File')
     uploaded_file = st.file_uploader("Upload Resposne Curves Data", type=["xlsx"])
     if uploaded_file is not None:
         sheets_dict = pd.read_excel(uploaded_file, sheet_name=None)
