@@ -176,18 +176,17 @@ with st.expander('About this app'):
     st.markdown('**How to use the app?**')
     st.warning("""🚀 Welcome to our app with three powerful modules!
 
-    🔹 **Regression**: Build and refine your models with ease.
+    🔹 Regression: Build and refine your models with ease.
 
-    🔹 **Response Curves**: Visualize and analyze how changes in media spend impact your results.
+    🔹 Response Curves: Visualize and analyze how changes in media spend impact your results.
 
-    🔹 **Simulator**: Experiment with different media spend scenarios to find the optimal strategy.
+    🔹 Simulator: Experiment with different media spend scenarios to find the optimal strategy.
 
     To get started, head over to the sidebar and select the task you want to perform. Use the intuitive flowcharts to guide you through each module step by step.""")
     st.warning("""
     ### Regression Module Workflow
 
     1. **Import the Raw Data file**: 
-    - Start by uploading your dataset.
 
     2. **Set the Model Configuration**:
     - Configure your model parameters like lag and decay.
@@ -202,16 +201,12 @@ with st.expander('About this app'):
     ### Response Curves Module Workflow
 
     1. **Import the Model Dump**:
-    - Start by uploading your saved model dump.
 
     2. **Select Variable Name from the Dropdown**:
-    - Choose the variable you want to analyze.
 
     3. **Enter CPRP, Price, and Scale**:
-    - Input the required values for CPRP, price, and scale.
 
     4. **Generate Response Curve**:
-    - Click the 'Generate Response Curve' button to visualize the response.
 
     5. **Finalize and Confirm the Curve**:
     - Adjust the scale values if necessary.
@@ -224,7 +219,6 @@ with st.expander('About this app'):
     ### Simulator Module Workflow
 
     1. **Import the Model Dump and Response Curve Data File**:
-    - Start by uploading your saved model dump and response curve data file.
 
     2. **Select Percentage Change in Last Year's Media Spend**:
     - Use the slider to set the percentage change in media spends over the last year.
