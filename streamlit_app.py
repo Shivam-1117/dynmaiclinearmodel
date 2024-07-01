@@ -171,14 +171,35 @@ st.title('Dynamic Linear Modelling App')
 sleep_time = 1
 
 with st.expander('About this app'):
-  st.markdown('**What can this app do?**')
-  st.info('This app allow users to build a dynamic linear model in an end-to-end workflow. Also, user can generate response cureves for the confirmed model and simulate the media spends.')
+    st.markdown('**What can this app do?**')
+    st.info('Welcome to our dynamic linear modeling app! Here, you can effortlessly build and refine your models from start to finish. Dive into the data, generate insightful response curves for your confirmed models, and explore media spend simulations to optimize your marketing strategy.')
+    st.markdown('**How to use the app?**')
+    st.warning("""🚀 Welcome to our app with three powerful modules!
 
-  st.markdown('**How to use the app?**')
-  st.warning('This app has three modules: 1. Regression 2. Response Curves 3. Simulator. To engage with the app, go to the sidebar and select the task you want to perform out of the three tabs.')
-  st.warning('1. Regression: Step 1: Import the Raw Data file. Step 2: Set the model configuration. In this you can give the model parameters like lag and decay. Then click on submit button. Step 3: Select the base discount factor and click on run regression. Step 5: We can download the model dump by clicking on Download Model Dump button below Actual Vs Predicted plot.')
-  st.warning('2. Response Curves: Step 1: Import the Model Dump. Step 2: Select Variable name from the dropdown. Step 3: Enter CPRP, Price and Scale. Step 4: Click on generate response curve button. Step 5: Once curve is finalised after changing scale values, click on Confirm Curve button and again select another variabel. Step 5: Once all the curves are generated and confirmed click on Download Response Curve Data.')
-  st.warning('3. Simulator: Step 1: Import the Model Dump and Response Curve Data File. Step 2: Select the percentage change in last 1 year spends of the media using slider. and Click on Simulate to get the Simulated Data.')
+    🔹 **Regression**: Build and refine your models with ease.
+
+    🔹 **Response Curves**: Visualize and analyze how changes in media spend impact your results.
+
+    🔹 **Simulator**: Experiment with different media spend scenarios to find the optimal strategy.
+
+    To get started, head over to the sidebar and select the task you want to perform. Use the intuitive flowcharts to guide you through each module step by step.""")
+    st.warning("""
+    ### Regression Module Workflow
+
+    1. **Import the Raw Data file**: 
+    - Start by uploading your dataset.
+
+    2. **Set the Model Configuration**:
+    - Configure your model parameters like lag and decay.
+    - Click on the 'Submit' button.
+
+    3. **Select the Base Discount Factor**:
+    - Choose your discount factor and click on 'Run Regression'.
+
+    4. **Download the Model Dump**:
+   - After running the regression, click on the 'Download Model Dump' button below the Actual vs Predicted plot to save your model.""")
+    st.warning('2. Response Curves: Step 1: Import the Model Dump. Step 2: Select Variable name from the dropdown. Step 3: Enter CPRP, Price and Scale. Step 4: Click on generate response curve button. Step 5: Once curve is finalised after changing scale values, click on Confirm Curve button and again select another variabel. Step 5: Once all the curves are generated and confirmed click on Download Response Curve Data.')
+    st.warning('3. Simulator: Step 1: Import the Model Dump and Response Curve Data File. Step 2: Select the percentage change in last 1 year spends of the media using slider. and Click on Simulate to get the Simulated Data.')
 
 
 def regression_section():
