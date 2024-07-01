@@ -198,7 +198,30 @@ with st.expander('About this app'):
 
     4. **Download the Model Dump**:
    - After running the regression, click on the 'Download Model Dump' button below the Actual vs Predicted plot to save your model.""")
-    st.warning('2. Response Curves: Step 1: Import the Model Dump. Step 2: Select Variable name from the dropdown. Step 3: Enter CPRP, Price and Scale. Step 4: Click on generate response curve button. Step 5: Once curve is finalised after changing scale values, click on Confirm Curve button and again select another variabel. Step 5: Once all the curves are generated and confirmed click on Download Response Curve Data.')
+    st.warning("""
+    ### Response Curves Module Workflow
+
+    1. **Import the Model Dump**:
+    - Start by uploading your saved model dump.
+
+    2. **Select Variable Name from the Dropdown**:
+    - Choose the variable you want to analyze.
+
+    3. **Enter CPRP, Price, and Scale**:
+    - Input the required values for CPRP, price, and scale.
+
+    4. **Generate Response Curve**:
+    - Click the 'Generate Response Curve' button to visualize the response.
+
+    5. **Finalize and Confirm the Curve**:
+    - Adjust the scale values if necessary.
+    - Click 'Confirm Curve' and then select another variable to repeat the process.
+
+    6. **Download Response Curve Data**:
+    - Once all curves are generated and confirmed, click 'Download Response Curve Data' to save your work.
+
+    Here's a visual guide to help you navigate through the steps:
+    """)
     st.warning('3. Simulator: Step 1: Import the Model Dump and Response Curve Data File. Step 2: Select the percentage change in last 1 year spends of the media using slider. and Click on Simulate to get the Simulated Data.')
 
 
