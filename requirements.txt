@@ -7,3 +7,4 @@ pydlm
 stats
 statsmodels
 xlsxwriter
+plotly
