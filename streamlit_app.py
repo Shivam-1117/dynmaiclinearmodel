@@ -166,7 +166,7 @@ def get_simulated_data(last_year, percentage_change):
 
 
 # Page title
-st.set_page_config(layout='wide', page_title='Dynamic Linear Modelling App', page_icon='🏗️')
+st.set_page_config(layout='wide', page_title='Dynamic Linear Modelling App')
 st.title('Dynamic Linear Modelling App')
 sleep_time = 1
 
