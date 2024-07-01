@@ -219,11 +219,19 @@ with st.expander('About this app'):
 
     6. **Download Response Curve Data**:
     - Once all curves are generated and confirmed, click 'Download Response Curve Data' to save your work.
-
-    Here's a visual guide to help you navigate through the steps:
     """)
-    st.warning('3. Simulator: Step 1: Import the Model Dump and Response Curve Data File. Step 2: Select the percentage change in last 1 year spends of the media using slider. and Click on Simulate to get the Simulated Data.')
+    st.warning("""
+    ### Simulator Module Workflow
 
+    1. **Import the Model Dump and Response Curve Data File**:
+    - Start by uploading your saved model dump and response curve data file.
+
+    2. **Select Percentage Change in Last Year's Media Spend**:
+    - Use the slider to set the percentage change in media spends over the last year.
+
+    3. **Simulate**:
+    - Click the 'Simulate' button to generate the simulated data.
+    """)
 
 def regression_section():
     st.session_state.regression_section = True
