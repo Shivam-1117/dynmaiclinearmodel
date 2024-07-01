@@ -50,7 +50,7 @@ def get_modelResults(model, variables, model_data, actual, period):
   avp['Period'] = period
   contributions['Period'] = period
   avp['Actual'] = actual
-  coefficients['Base'] = np.array(model.getLatentState(filterType='forwardFilter', name = 'intercept')).flatten()
+  coefficients['Base'] = np.array(model.getLatentState(filterType='forwardFilter', name = 'base')).flatten()
   contributions['Base'] = coefficients['Base']
   for variable in variables:
     coefficients[variable] = np.array(model.getLatentState(filterType='forwardFilter', name = variable)).flatten()
@@ -222,7 +222,7 @@ def regression_section():
                 decay_steps = input_cols[5].text_input('', value=1, key=f'{var}_decay_steps')
                 decay_min = input_cols[6].text_input('', value=1.00, key=f'{var}_decay_min')
                 decay_max = input_cols[7].text_input('', value=1.00, key=f'{var}_decay_max')
-                discount_factor = input_cols[8].text_input('', value=1.0000, key=f'{var}_discount_factor')
+                discount_factor = input_cols[8].text_input('', value=0.98, key=f'{var}_discount_factor')
                 user_inputs[var] = {
                     'In Model': in_model,
                     'Variable Type': vtype,
@@ -304,10 +304,11 @@ def regression_section():
                 
                 # Creating the base component
                 with st.form(key='base_component'):
-                    discount_factor = st.text_input('Base Discount Factor', value='0.9999')
+                    discount_factor_base = st.text_input('Base Discount Factor', value='0.98')
                     submit_button_reg = st.form_submit_button(label='Run Regression', on_click = submitted)
                 if submit_button_reg:
-                    base_component = trend(degree = 0, discount = min(round(float(discount_factor), 4), 0.9999), name='intercept')
+                    # base_component = trend(degree = 0, discount = min(round(float(discount_factor), 4), 0.9999), name='intercept')
+                    base_component, feature_dict['base'] = create_dynamic_comp(feature_data = [1]*len(y), feature_name = 'base', discount_factor = min(round(float(discount_factor_base), 4), 0.9999))
                     models_df = pd.DataFrame()
                     id = 0
                     if len(outside_vars_ids.keys()) == 0:
@@ -382,6 +383,8 @@ def regression_section():
 
                         model_stats_all = pd.concat([model_stats_all, model_stats], ignore_index = True)
                         variable_stats_all = pd.concat([variable_stats_all, variable_stats], ignore_index = True)
+                    models_df = models_df.rename(columns = {'outside_variables': 'Variable'})
+                    variable_stats_all = variable_stats_all.merge(models_df, on = ['model_id', 'Variable'], how = 'left')
                     col1, col2 = st.columns(2)
                     with col1:
                         st.write('### Model Results')
@@ -391,33 +394,36 @@ def regression_section():
                         st.dataframe(variable_stats_all)
 
                     st.write('### Actual Vs Predicted')
-                    fig, ax = plt.subplots()
+                    fig, ax = plt.subplots(figsize = (5, 2))
                     color = 'tab:blue'
-                    ax.set_xlabel('Period')
-                    ax.set_ylabel('KPI', color=color)
+                    ax.set_xlabel('Period', fontsize = 6)
+                    ax.set_ylabel('Dependent Variable', fontsize = 6)
                     ax.plot(avp['Period'], avp['Actual'], color='blue')
                     ax.plot(avp['Period'], avp['Predicted'], color='orange')
-                    ax.tick_params(axis = 'y', labelcolor=color)
+                    ax.tick_params(axis = 'y', labelsize=4)
+                    ax.tick_params(axis = 'x', labelsize=4)
                     ax.legend()
                     fig.tight_layout()
-                    col1, col2 = st.columns(vertical_alignment="top", spec = [0.6, 0.4])
+                    st.pyplot(fig)
+
+                    # col1, col2 = st.columns(vertical_alignment="top", spec = [0.6, 0.4])
                     
-                    with col1:
-                        st.pyplot(fig)
-                    with col2:
-                        st.dataframe(avp, height=560, width=600)
+                    # with col1:
+                    #     st.pyplot(fig)
+                    # with col2:
+                    #     st.dataframe(avp, height=560, width=600)
                     
-                    col1, col2, col3 = st.columns(vertical_alignment="top", spec = [0.33, 0.33, 0.33])
+                    # col1, col2, col3 = st.columns(vertical_alignment="top", spec = [0.33, 0.33, 0.33])
                     
-                    with col1:
-                        st.write('### Transformed Data (required for response curves)')
-                        st.dataframe(transformed_data)
-                    with col2:
-                        st.write('### Coefficients')
-                        st.dataframe(coefficients)
-                    with col3:
-                        st.write('### Contributions (required for response curves)')
-                        st.dataframe(contributions)
+                    # with col1:
+                    #     st.write('### Transformed Data (required for response curves)')
+                    #     st.dataframe(transformed_data)
+                    # with col2:
+                    #     st.write('### Coefficients')
+                    #     st.dataframe(coefficients)
+                    # with col3:
+                    #     st.write('### Contributions (required for response curves)')
+                    #     st.dataframe(contributions)
 
                     output = BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
