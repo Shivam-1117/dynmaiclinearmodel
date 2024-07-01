@@ -18,8 +18,6 @@ A simple Streamlit app that lets you build simple ML models with scikit-learn.
    $ streamlit run streamlit_app.py
    ```
 
-Certainly! Here’s a well-formatted version of the information for the README section of your Git repository:
-
 ---
 
 ## What can this app do?
@@ -84,3 +82,5 @@ To get started, head over to the sidebar and select the task you want to perform
 
 3. **Simulate**:
    - Click the 'Simulate' button to generate the simulated data.
+
+---
