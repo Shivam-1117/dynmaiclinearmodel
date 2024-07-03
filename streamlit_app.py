@@ -514,7 +514,6 @@ def response_curves_section():
             M = response_curve_params.loc[response_curve_params['Variable'] == variable, 'M'].tolist()[0]
             D = response_curve_params.loc[response_curve_params['Variable'] == variable, 'D'].tolist()[0]
             G = response_curve_params.loc[response_curve_params['Variable'] == variable, 'G'].tolist()[0]
-             # Arrange the dropdown and input fields in a single row
             col1, col2, col3= st.columns([1, 1, 1])
             with col1:
                 st.write('M')
@@ -588,7 +587,6 @@ def response_curves_section():
 
 def simulator_section():
     st.session_state.simulator_section = True
-    # Simulator
     st.header('Import Model Dump')
     uploaded_file = st.file_uploader("Upload Model Dump", type=["xlsx"])
     if uploaded_file is not None:
