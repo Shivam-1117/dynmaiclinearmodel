@@ -19,7 +19,6 @@ def submitted():
 def reset():
     st.session_state.submitted = False
 
-# Lag and Adstock Functions
 def apply_lag(media_data, lag = 0):
   return media_data.shift(lag, fill_value = 0)
 
@@ -33,7 +32,6 @@ def apply_adstock(media_data, decay = 0):
       media_data_ad.append(media_data[i] + (1 - decay) * media_data_ad[i-1])
   return media_data_ad
 
-# Dynamic Commponents
 def create_dynamic_comp(feature_data, feature_name, discount_factor = 1):
   features = [[feature_data[i]] for i in range(len(feature_data))]
   dynamic_comp = dynamic(features = features,
@@ -164,8 +162,6 @@ def get_simulated_data(last_year, percentage_change):
   return new_last_year
 
 
-
-# Page title
 st.set_page_config(layout='wide', page_title='Dynamic Linear Modelling App')
 st.title('Dynamic Linear Modelling App')
 sleep_time = 1
@@ -233,13 +229,12 @@ def regression_section():
     uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx"])
     if uploaded_file is not None:
         retail_data = pd.read_excel(uploaded_file, index_col = False)
-    # Initiate the model building process
     if uploaded_file:
         with st.status("Running ...", expanded=True) as status:
             st.write("Preparing data ...")
             time.sleep(sleep_time)
-        X = retail_data[['GDP', 'Covid Dummy', 'Digital (Million $)', 'radio (Million $)', 'TV (Thousands $)']]
-        y = retail_data['sales (Million $)']
+        X = retail_data[['GDP', 'Covid Impact', 'Digital Spends', 'Radio Spends', 'TV Spends']]
+        y = retail_data['Sales']
         st.write("### Model Raw Data")
         st.dataframe(retail_data)
 
@@ -247,11 +242,7 @@ def regression_section():
         to_test_options = ['Not in Model', 'In Model', 'Outside Model']
         var_type = ['Linear', 'Adstock']
         lag_options = [0, 1, 2, 3, 4, 5]
-
-        # Create a dictionary to hold the user inputs
         user_inputs = {}
-
-        # Create the header row
         header_cols = st.columns(9)
         headers = ['Variable', 'In Model', 'Variable Type', 'Lag Min', 'Lag Max', 'Decay Steps', 'Decay Min', 'Decay Max', 'Discount Factor']
         for col, header in zip(header_cols, headers):
@@ -259,8 +250,6 @@ def regression_section():
 
         if 'model_config_submitted' not in st.session_state:
             st.session_state.model_config_submitted = False        
-
-        # if not st.session_state.model_config_submitted:
         with st.form(key='model_config'):
             for var in X.columns:
                 input_cols = st.columns(9)
@@ -283,12 +272,9 @@ def regression_section():
                     'Decay Max': round(float(decay_max), 2),
                     'Discount Factor': float(discount_factor)
                 }
-            # Submit button
             submit_button_config = st.form_submit_button(label='Submit')
-        # When the form is submitted
         if submit_button_config:
             st.session_state.model_config_submitted = True
-            # Convert the user inputs dictionary to a DataFrame
             with st.status("Running ...", expanded=True) as status:
                 st.write("Setting up the model configuration ...")
                 time.sleep(sleep_time)
@@ -301,7 +287,6 @@ def regression_section():
                 st.write('### Please select at least 1 variable in model.')
 
         if st.session_state.model_config_submitted and 'model_params' in st.session_state.keys():
-                # Creating the transformed dataset
                 model_params = st.session_state['model_params']
                 transformed_data = pd.DataFrame()
                 outside_vars_dict = {}
@@ -340,7 +325,6 @@ def regression_section():
 
                 model_vars = not_outside_vars + list(outside_vars_dict.keys())
                 
-                # Creating Dynamic Components
                 dynamic_comps = {}
                 feature_dict = {}
                 for variable in model_vars:
@@ -352,12 +336,10 @@ def regression_section():
                         discount_factor = model_params[model_params['Variable'] == variable]['Discount Factor']
                         dynamic_comps[variable], feature_dict[variable] = create_dynamic_comp(transformed_data[variable], variable, discount_factor)
                 
-                # Creating the base component
                 with st.form(key='base_component'):
                     discount_factor_base = st.text_input('Base Discount Factor', value='0.98')
                     submit_button_reg = st.form_submit_button(label='Run Regression', on_click = submitted)
                 if submit_button_reg:
-                    # base_component = trend(degree = 0, discount = min(round(float(discount_factor), 4), 0.9999), name='intercept')
                     base_component, feature_dict['base'] = create_dynamic_comp(feature_data = [1]*len(y), feature_name = 'base', discount_factor = float(discount_factor_base))
                     models_df = pd.DataFrame()
                     id = 0
@@ -444,17 +426,7 @@ def regression_section():
                         st.dataframe(variable_stats_all)
 
                     st.write('### Actual Vs Predicted')
-                    # fig, ax = plt.subplots(figsize = (5, 2))
-                    # color = 'tab:blue'
-                    # ax.set_xlabel('Period', fontsize = 6)
-                    # ax.set_ylabel('Dependent Variable', fontsize = 6)
-                    # ax.plot(avp['Period'], avp['Actual'], color='blue')
-                    # ax.plot(avp['Period'], avp['Predicted'], color='orange')
-                    # ax.tick_params(axis = 'y', labelsize=4)
-                    # ax.tick_params(axis = 'x', labelsize=4)
-                    # ax.legend()
-                    # fig.tight_layout()
-                    # Create traces for actual and predicted data
+
                     trace_actual = go.Scatter(
                         x=avp['Period'],
                         y=avp['Actual'],
@@ -471,39 +443,15 @@ def regression_section():
                         line=dict(color='orange')
                     )
 
-                    # Create the layout
                     layout = go.Layout(
                         title='Actual Vs Predicted',
                         xaxis=dict(title='Period', titlefont=dict(size=16), tickfont=dict(size=12)),
                         yaxis=dict(title='Dependent Variable', titlefont=dict(size=16), tickfont=dict(size=12)),
                         hovermode='closest'
-                        # width = 480,
-                        # height = 192
                     )
 
-                    # Create the figure
                     fig = go.Figure(data=[trace_actual, trace_predicted], layout=layout)
                     st.plotly_chart(fig)
-                    # st.pyplot(fig)
-
-                    # col1, col2 = st.columns(vertical_alignment="top", spec = [0.6, 0.4])
-                    
-                    # with col1:
-                    #     st.pyplot(fig)
-                    # with col2:
-                    #     st.dataframe(avp, height=560, width=600)
-                    
-                    # col1, col2, col3 = st.columns(vertical_alignment="top", spec = [0.33, 0.33, 0.33])
-                    
-                    # with col1:
-                    #     st.write('### Transformed Data (required for response curves)')
-                    #     st.dataframe(transformed_data)
-                    # with col2:
-                    #     st.write('### Coefficients')
-                    #     st.dataframe(coefficients)
-                    # with col3:
-                    #     st.write('### Contributions (required for response curves)')
-                    #     st.dataframe(contributions)
 
                     output = BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -526,23 +474,20 @@ def regression_section():
 
 def response_curves_section():
     st.session_state.response_curves_section = True
-    # Response Curves
     st.header('Import Model Dump')
     uploaded_file = st.file_uploader("Upload Model Dump", type=["xlsx"])
     if uploaded_file is not None:
         sheets_dict = pd.read_excel(uploaded_file, sheet_name=None)
-        # Display each sheet's dataframe
         for sheet_name, df in sheets_dict.items():
             if sheet_name == 'Raw Data':
                 raw_data = df.copy()
                 raw_data = raw_data.iloc[len(raw_data)-12:, 4:].reset_index(drop=True)
             if sheet_name == 'Transformed Data':
                 model_data = df.copy()
-                model_data = model_data.iloc[len(model_data)-12:, 2:].reset_index(drop=True)
+                model_data = model_data.iloc[len(model_data)-12:, 1:].reset_index(drop=True)
             if sheet_name == 'Contributions':
                 contributions = df.copy()
-                contributions = contributions.iloc[len(contributions)-12:, 2:].reset_index(drop=True)
-    # Initiate the model building process
+                contributions = contributions.iloc[len(contributions)-12:, :].reset_index(drop=True)
     if uploaded_file:
         with st.status("Running ...", expanded=True) as status:
             st.write("Uploading data ...")
@@ -580,7 +525,6 @@ def response_curves_section():
             with col3:
                 st.write('G')
                 st.write(G)
-             # Arrange the dropdown and input fields in a single row
             col1, col2, col3= st.columns([1, 1, 1])
             with col1:
                 cprp = st.text_input('Enter CPRP:', value=1.0)
@@ -668,7 +612,6 @@ def simulator_section():
             st.write("Uploading data ...")
             time.sleep(sleep_time)
         model_params = model_params.merge(response_curve_params, on = 'Variable', how = 'left')
-        # Create sliders for each variable
         percentage_changes = {}
         variable_spends = pd.DataFrame()
         for variable in raw_data.columns[4:]:
@@ -715,8 +658,6 @@ def simulator_section():
             scenario_data['Scenario ROI'] = scenario_data['Scenario ROI'].apply(lambda x: round(x, 2))
 
             roi = scenario_data['Scneraio Contribution'].sum()/scenario_data['Scenario Spends'].sum()
-
-            # Gauge chart for ROI
             fig = go.Figure(go.Indicator(
                 mode="gauge+number",
                 value=roi,
@@ -725,8 +666,6 @@ def simulator_section():
                     'bar': {'color': "darkblue"}}
                     ))
 
-            # st.plotly_chart(fig)
-            # st.write(scenario_data)
             col1, col2 = st.columns(spec = [1, 1], vertical_alignment= 'center')
             with col1:
                 st.plotly_chart(fig)
